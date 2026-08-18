@@ -63,7 +63,7 @@ _ap.add_argument("--cohort", choices=sorted(_COHORTS), default="manual",
                  help="which region set to analyse; outputs are suffixed by it")
 _args, _ = _ap.parse_known_args()
 COHORT = _args.cohort
-SUF = "" if COHORT == "manual" else f"_{COHORT}"
+SUF = f"_{COHORT}"          # every output names its cohort
 ALPS_CSV, DEV_CSV = _COHORTS[COHORT]
 
 FA_DROP_THRESHOLD = 20.0
@@ -344,7 +344,9 @@ for sid, block in lon.groupby("Subject_ID"):
                 "wave_b": b["wave"],
                 "side": side,
                 "d_age": abs(float(b["Age"]) - float(a["Age"])),
-                "d_motion": abs(float(b["Eddy_Mean_RMS"]) - float(a["Eddy_Mean_RMS"])),
+                # recorded only; the automated cohorts carry no per-session motion column
+                "d_motion": (abs(float(b["Eddy_Mean_RMS"]) - float(a["Eddy_Mean_RMS"]))
+                             if "Eddy_Mean_RMS" in a else float("nan")),
             }
             ok = True
             for ang in ("theta_PVS", "theta_SCR", "theta_SLF"):

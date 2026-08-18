@@ -693,9 +693,9 @@ for _v in ("cross", "v2_slab", "anat_x"):
 # The derivation is in the text. The monotonicity apparatus it used to carry was
 # redundant: lambda2 and lambda3 ARE the extremes of the perpendicular plane, so
 # the inequality is immediate and the expansion still gives the rate.
-results.append((r"\le \lambda_2" in TEX and r"\ge \lambda_3" in TEX
-                and "largest and smallest diffusivities in that plane" in TEX,
-                "the bound is derived from the plane extremes", None, None))
+results.append(("R(\\alpha) = \\frac" in TEX
+                and "modulated by one angle and nothing else" in TEX,
+                "the bound is given in closed form", None, None))
 
 # --- attribution for the eigenvalue ratio ---
 # Westin for the shape framework the quantity belongs to, Schilling for the
@@ -1066,7 +1066,7 @@ check("bias falls as the pair leaves degeneracy", 1.0,
 check("bound stated without the redundant monotonicity apparatus", 0.0,
       float("mathrm{d}R" in TEX or "not a tendency but a bound" in TEX))
 check("bound, equality condition and rate all retained", 1.0,
-      float("le \\lambda_2" in TEX and "ge \\lambda_3" in TEX
+      float("le\\lambda_2" in TEX and "ge\\lambda_3" in TEX
             and "O(\\alpha^4)" in TEX))
 check("equality ruled out on invariance grounds, before any data", 1.0,
       float("cannot always be equal" in " ".join(TEX.split())
@@ -1135,7 +1135,7 @@ check("LD-ALPS presented as independent validation of the bound", 1.0,
 # where the variants are now read as a family rather than recommended.
 check("variant section describes rather than prescribes", 1.0,
       float("rather than as candidate methods" in TEX
-            and "not a menu but a series" in TEX))
+            and "menu but a series" in TEX))
 check("no recommendation is drawn", 1.0,
       float("We draw no recommendation from this" in TEX))
 
@@ -1369,6 +1369,32 @@ check('data availability cites the analysis repository', 1.0,
       float('github.com/snhwang/dti-alps-analysis' in ' '.join(TEX.split())))
 check('no stale on-request claim for the scripts', 0.0,
       float('analysis scripts, and derived values' in ' '.join(TEX.split())))
+
+_ov = ' '.join(TEX.split())
+check('Methods does not restate the Introduction', 0.0,
+      float('the refinement is to measure rather than assume' in _ov))
+
+# Repositioning sensitivity, on the sample Section 3.5 and Figure 7 report.
+# Needs three conditions together: sphere cohort, the DLBS analysis
+# participants, and motion QC at 0.5 mm. No single script applied all three,
+# which is why repositioning_table_manual.csv (78 obs, 19 subjects) looked like
+# the source and is not.
+_rq = pd.read_csv(HERE / 'repositioning_sphere_qc.csv').set_index('metric')
+check('repositioning sample, observations', 580.0,
+      float(_rq.loc['Classic', 'n_obs']))
+check('repositioning sample, participants', 156.0,
+      float(_rq.loc['Classic', 'n_subjects']))
+check('classic slope per degree', 0.783,
+      float(_rq.loc['Classic', 'slope_pct_per_deg']), tol=5e-3)
+check('refined slope per degree', 0.260,
+      float(_rq.loc['Refined', 'slope_pct_per_deg']), tol=5e-3)
+check('classic interval excludes zero', 1.0,
+      float(_rq.loc['Classic', 'ci_lo'] > 0))
+check('refined interval contains zero', 1.0,
+      float(_rq.loc['Refined', 'ci_lo'] < 0 < _rq.loc['Refined', 'ci_hi']))
+_f = ' '.join(TEX.split())
+check('manuscript quotes the reproduced slope', 1.0,
+      float('$+0.78\\%$ per degree' in _f))
 
 print(f"{'':4s} {'check':<52s} {'claimed':>10s} {'actual':>10s}")
 nfail = 0

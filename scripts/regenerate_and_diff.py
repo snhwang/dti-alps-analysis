@@ -105,6 +105,11 @@ STEPS = [
      ["manual_roi_offtract.py"], {}, ["manual_roi_offtract.csv"], 3),
     ("regions", "placement reliability, one estimator for both region sets",
      ["manual_vs_atlas_icc.py"], {}, ["manual_vs_atlas_icc.csv"], 1),
+    ("pose", "repositioning pairs, sphere cohort",
+     ["longitudinal_reliability.py --cohort spheres"], {},
+     ["repositioning_pairs_spheres.csv"], 5),
+    ("pose", "repositioning sensitivity on the reported sample",
+     ["repositioning_sphere_qc.py"], {}, ["repositioning_sphere_qc.csv"], 3),
 ]
 SLOW = 5
 
