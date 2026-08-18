@@ -7,50 +7,62 @@ These are the working scripts, not a packaged tool. They are published so that
 any result in the paper can be traced to the code that made it. Expect to edit
 paths before anything runs.
 
+## What you can run, and what you cannot
+
+There is a chain: source images, then processing, then cached per-session CSVs,
+then the analyses that read those CSVs. Only the code is published here, so where
+you can join the chain depends on what data you have.
+
+- **30 scripts read imaging data.** They need the cohorts below, FSL, and the
+  processed sessions on disk.
+- **36 scripts read a cached CSV that an earlier script wrote.** They fail with a
+  `FileNotFoundError` in a fresh clone until you have run the upstream script
+  that produces their input. That is expected, not a fault.
+- **24 need neither**, and run immediately. `scripts/sorting_bias_floor.py` is
+  the clearest example: it simulates the acquisition and reproduces the
+  eigenvalue-sorting noise floor quoted in the paper, with no data at all.
+
+Result files are not published. HCP-A derived values are restricted by the AABC
+Data Use Terms, and the final values for everything are in the manuscript.
+
 ## Data
 
-None of it is included here. Get it from the sources below.
-
-- **HCP-A** — through the BALSA repository, <https://balsa.wustl.edu>, to
-  qualified registered users under the AABC Consortium Data Use Terms. Derived
-  values are not redistributed here, and identifier-linked derived values may not
-  be redistributed at all under those Terms.
+- **HCP-A** — the BALSA repository, <https://balsa.wustl.edu>, to qualified
+  registered users under the AABC Consortium Data Use Terms. Identifier-linked
+  derived values may not be redistributed under those Terms, which is why none
+  are here.
 - **DLBS** — OpenNeuro, <https://openneuro.org/datasets/ds004856>, version 1.2.0.
 - **Trigeminal neuralgia** — OpenNeuro,
   <https://openneuro.org/datasets/ds005713>, version 2.0.2, CC0.
 
-Result files are not included either. The final values are in the manuscript.
-
-## Requirements
+## Install
 
     uv venv
     uv pip install -r requirements.txt
 
-Install **FSL** separately (<https://fsl.fmrib.ox.ac.uk>). It is used for
-registration and for the tract atlases, and several scripts shell out to it.
-
-`scripts/axis_error_sensitivity.py` imports `dti_alps_refined`, the companion
-package at <https://github.com/snhwang/dti-alps-refined>.
+Install **FSL** separately, <https://fsl.fmrib.ox.ac.uk>. It is not a Python
+package. Several scripts shell out to it for registration and the tract atlases.
 
 ## Data directories must be edited
 
-Paths are hardcoded to the machine the analyses ran on. Drive letters appear as
-`Q:/dti_output` for the processed sessions, `M:/` for the trigeminal release,
-`F:/` and `P:/` for the HCP structural packages, and `C:/Users/.../fsl` for FSL.
+Paths are hardcoded to the machine the analyses ran on: `Q:/dti_output` for the
+processed sessions, `M:/` for the trigeminal release, `F:/` and `P:/` for the
+HCP-A structural packages, `C:/Users/.../fsl` for FSL.
 
-`scripts/data_paths.py` translates those between Windows and WSL, but the letters
-themselves are literals. Change them to your own locations before running
-anything. `grep -rn 'winpath\|:/' scripts/*.py` finds them.
+`scripts/data_paths.py` translates those between Windows and WSL, but the drive
+letters are literals. Change them to your own locations first.
+
+    grep -rn "winpath\|:/" scripts/*.py
 
 ## Running
 
-`scripts/regenerate_and_diff.py` runs the chain that regenerates the derived
-values and diffs each output against the committed version.
-`scripts/verify_manuscript.py` checks the manuscript's numbers against those
-outputs; it needs the manuscript source, which is not published here.
+Each script is self-contained and documented at the top of the file, which is the
+best starting point for tracing a single number.
 
-Individual scripts are self-contained and documented at the top of each file,
-which is the better starting point for tracing one number.
+`scripts/regenerate_and_diff.py` runs the chain end to end and diffs each output
+against the committed version. `scripts/verify_manuscript.py` checks the
+manuscript's numbers against those outputs; it needs the manuscript source, which
+is not published here.
 
 ## Licence
 
