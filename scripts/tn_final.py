@@ -31,6 +31,7 @@ import sys
 import warnings
 from pathlib import Path
 
+from data_paths import winpath
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -39,7 +40,7 @@ warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 HERE = Path(__file__).resolve().parent
-PARTICIPANTS = Path(r"M:/ds005713-download/participants_v2.0.1.tsv")
+PARTICIPANTS = Path(winpath("M:/ds005713-download/participants_v2.0.1.tsv"))
 QC = HERE / "tn_sphere_qc.csv"
 BASE = ["classic", "cross", "v2_sphere", "ALPS-PAS", "per-voxel"]
 BANDED = [f"{k}_b{b}" for b in (8, 12, 16) for k in ("cross", "v2_slab")]

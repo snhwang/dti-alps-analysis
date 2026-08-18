@@ -3,36 +3,39 @@
 #   uv venv
 #   uv pip install -r requirements.txt
 #
-# Versions are those the results in the manuscript were produced under, on
-# Python 3.14.2. Loosen the pins if you need to. Nothing here relies on
-# version-specific behaviour, but these are what the numbers came from.
+# Minimum versions, not exact ones. The reported results were produced on
+# Python 3.14.2 with pandas 3.0.3, numpy 2.4.6, scipy 1.17.1, nibabel 5.4.2,
+# matplotlib 3.10.9 and statsmodels 0.14.6, but pinning those exactly makes the
+# file unusable on a different Python. Nothing here depends on
+# version-specific behaviour.
 
-pandas==3.0.3
-numpy==2.4.6
-scipy==1.17.1
+pandas>=2.0
+numpy>=1.24
+scipy>=1.11
 
 # NIfTI reading. Needed by any script that touches image data rather than a
 # cached CSV, which is about a third of them.
-nibabel==5.4.2
+nibabel>=5.1
 
 # Figures only.
-matplotlib==3.10.9
+matplotlib>=3.7
 
-# Mixed models and clustered standard errors, used by the reliability and
-# covariate analyses.
-statsmodels==0.14.6
+# Mixed models and clustered standard errors, used by reliability_analysis.py
+# and the covariate models.
+statsmodels>=0.14
 
 # Not on PyPI, and not needed for most of the scripts:
 #
-#   scripts/axis_error_sensitivity.py imports dti_alps_refined. Clone and
-#   install the companion package if you want that one:
+#   axis_error_sensitivity.py imports dti_alps_refined and its test helpers.
+#   Clone the companion package and point DTI_ALPS_REFINED at it, or keep it
+#   beside this repository:
 #
 #       git clone https://github.com/snhwang/dti-alps-refined
 #       uv pip install -e dti-alps-refined
 #
-#   scripts/tn_alps.py imports an internal pipeline module inside a try block.
-#   The script runs without it; that path is only used when regenerating
-#   tensors from source DWI rather than reading fitted ones.
+#   tn_alps.py imports an internal pipeline module inside a try block. The
+#   script runs without it; that path is only used when regenerating tensors
+#   from source DWI rather than reading fitted ones.
 #
 # FSL is a separate install (https://fsl.fmrib.ox.ac.uk), not a Python package.
-# Several scripts shell out to it for registration and for the tract atlases.
+# Several scripts shell out to it for registration and the tract atlases.

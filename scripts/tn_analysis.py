@@ -26,6 +26,7 @@ import sys
 import warnings
 from pathlib import Path
 
+from data_paths import winpath
 import numpy as np
 import pandas as pd
 
@@ -37,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from hemisphere_age import williams
 
 HERE = Path(__file__).resolve().parent
-PARTICIPANTS = Path(r"M:/ds005713-download/participants_v2.0.1.tsv")
+PARTICIPANTS = Path(winpath("M:/ds005713-download/participants_v2.0.1.tsv"))
 VARIANTS = ["classic", "cross", "v2_sphere", "v2_slab"]
 CLINICAL = [("Sindou_grade", "Sindou grade"),
             ("Pain_severity (average score)", "pain severity"),

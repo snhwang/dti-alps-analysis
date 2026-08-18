@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from data_paths import winpath
 import pandas as pd
 from scipy import stats
 
@@ -207,8 +208,8 @@ hp = pd.read_csv(HERE / "head_rotation_tn.csv")
 # OpenNeuro file, so allow the location to be overridden rather than requiring
 # the M: volume to be mounted; that is what stopped this script running
 # anywhere but the acquisition workstation.
-_TN_PAR = Path(os.environ.get("TN_PARTICIPANTS",
-                              "M:/ds005713-download/participants_v2.0.1.tsv"))
+_TN_PAR = Path(winpath(os.environ.get(
+    "TN_PARTICIPANTS", "M:/ds005713-download/participants_v2.0.1.tsv")))
 par = pd.read_csv(_TN_PAR, sep="\t")
 m = tn.merge(par, on="BIDS_ID").merge(hp, on="BIDS_ID")
 m["patient"] = (m.BIDS_ID.astype(str).str.extract(r"sub-(\d+)")[0].str.len() >= 3).astype(int)
@@ -1314,31 +1315,20 @@ check('sessions where the two sides share a slice', 72.0,
 check('caption states the coincidence count', 1.0,
       float('coincide in $72$ of $78$ sessions' in ' '.join(TEX.split())))
 
-# The manual-versus-atlas reliability figures are read out of the two reliability
-# reports rather than transcribed, since the previous pair could not be located in
-# any output: 0.428 was a left-hemisphere point estimate and 0.720 was nowhere.
-def _icc_from(report, metric='Classic'):
-    txt = (HERE / report).read_text(encoding='utf-8')
-    blk = txt.split('L/R average, unadjusted', 1)[1]
-    m = re.search(rf'^{metric}\s+([0-9.]+)', blk, re.M)
-    n = re.match(r'[^(]*\((\d+) subjects, (\d+) sessions\)', blk)
-    return float(m.group(1)), int(n.group(1)), int(n.group(2))
-_mi, _ms, _mn = _icc_from('report_manual.txt')
-_ai, _as, _an = _icc_from('report_auto.txt')
-check('hand-drawn between-visit ICC', 0.267, _mi, tol=5e-3)
-check('hand-drawn reliability sample, participants', 19.0, float(_ms))
-check('hand-drawn reliability sample, sessions', 48.0, float(_mn))
-check('atlas between-visit ICC', 0.559, _ai, tol=5e-3)
-check('atlas reliability sample, participants', 156.0, float(_as))
-check('atlas reliability sample, sessions', 379.0, float(_an))
-check('atlas is the more reliable placement', 1.0, float(_ai > _mi))
-_f = ' '.join(TEX.split())
-check('manuscript quotes the reproducible ICC pair', 1.0,
-      float(f'${_mi:.3f}$' in _f and f'${_ai:.3f}$' in _f))
-check('the unlocatable ICC pair is gone', 0.0,
-      float('$0.428$ against $0.720$' in _f))
-check('both samples named, and the mismatch stated', 1.0,
-      float('not the same sample' in _f and 'indicative rather than paired' in _f))
+# Placement reliability, both sides on variance_components, the estimator the
+# rest of the manuscript uses. Previously one side came from a second pipeline,
+# which is how 0.559 came to sit beside 0.594 for the same quantity.
+_mi = pd.read_csv(HERE / "manual_vs_atlas_icc.csv").set_index("placement")
+check("hand-drawn placement ICC", 0.3783, float(_mi.loc["hand-drawn", "icc"]), tol=3e-3)
+check("atlas ICC on the hand-drawn sessions", 0.6112,
+      float(_mi.loc["atlas, hand-drawn sessions only", "icc"]), tol=3e-3)
+check("atlas ICC on the full cohort", 0.5945, float(_mi.loc["atlas", "icc"]), tol=3e-3)
+check("atlas placement is the more reliable", 1.0,
+      float(_mi.loc["atlas", "icc"] > _mi.loc["hand-drawn", "icc"]))
+_f = " ".join(TEX.split())
+check("the second-pipeline ICC is gone", 0.0, float("$0.559$" in _f))
+check("placement sentence quotes the single-estimator figures", 1.0,
+      float("$0.378$" in _f and "$0.611$" in _f and "$0.594$" in _f))
 
 
 # AABC Term 8b acknowledgment, from the consortium's own page. The bracketed
@@ -1374,6 +1364,11 @@ check('data availability states what the package does contain', 1.0,
       float('An implementation of every variant reported here is available' in _da))
 check('the regeneration limit is stated', 1.0,
       float('cannot be regenerated from that package alone' in _da))
+
+check('data availability cites the analysis repository', 1.0,
+      float('github.com/snhwang/dti-alps-analysis' in ' '.join(TEX.split())))
+check('no stale on-request claim for the scripts', 0.0,
+      float('analysis scripts, and derived values' in ' '.join(TEX.split())))
 
 print(f"{'':4s} {'check':<52s} {'claimed':>10s} {'actual':>10s}")
 nfail = 0

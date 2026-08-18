@@ -24,6 +24,7 @@ so it needs no data.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -32,7 +33,11 @@ import pandas as pd
 
 import atomic_io  # noqa: F401  writes become atomic on import
 
-REPO = Path(r"C:\Users\Scott\Documents\Work\dti-alps-refined")
+# Companion package. Set DTI_ALPS_REFINED to your clone, or keep it beside
+# this repository.
+REPO = Path(os.environ.get(
+    "DTI_ALPS_REFINED",
+    Path(__file__).resolve().parent.parent.parent / "dti-alps-refined"))
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "tests"))
 from test_invariance import synthetic, rotation                      # noqa: E402

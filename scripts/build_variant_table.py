@@ -17,6 +17,7 @@ import sys
 import warnings
 from pathlib import Path
 
+from data_paths import winpath
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -52,7 +53,7 @@ def icc_and_age(fn, col):
 
 rot = pd.read_csv(HERE / "rotation_slab_accuracy.csv")
 tn = pd.read_csv(HERE / "tn_alps.csv")
-par = pd.read_csv(r"M:/ds005713-download/participants_v2.0.1.tsv", sep="\t")
+par = pd.read_csv(winpath("M:/ds005713-download/participants_v2.0.1.tsv"), sep="\t")
 m = tn.merge(par, on="BIDS_ID")
 m["patient"] = (m.BIDS_ID.astype(str).str.extract(r"sub-(\d+)")[0].str.len() >= 3).astype(int)
 m["age"] = pd.to_numeric(m.age, errors="coerce")

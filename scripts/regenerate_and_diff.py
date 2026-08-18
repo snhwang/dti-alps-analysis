@@ -103,6 +103,8 @@ STEPS = [
      ["hemisphere_slice_agreement.py"], {}, ["hemisphere_slice_agreement.csv"], 3),
     ("regions", "off-tract fraction of the hand-drawn regions",
      ["manual_roi_offtract.py"], {}, ["manual_roi_offtract.csv"], 3),
+    ("regions", "placement reliability, one estimator for both region sets",
+     ["manual_vs_atlas_icc.py"], {}, ["manual_vs_atlas_icc.csv"], 1),
 ]
 SLOW = 5
 

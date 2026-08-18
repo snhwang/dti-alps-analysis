@@ -60,8 +60,8 @@ from estimator_variants import directional_diffusivity as dd
 from registration_aligns_tracts import polar_rotation
 from direction_estimators import weights_for, principal, align, X, Y, Z
 
-ROOT = Path(r"M:/ds005713-derivatives/dti_output/ds005713_preproc")
-PARTICIPANTS = Path(r"M:/ds005713-download/participants_v2.0.1.tsv")
+ROOT = Path(winpath("M:/ds005713-derivatives/dti_output/ds005713_preproc"))
+PARTICIPANTS = Path(winpath("M:/ds005713-download/participants_v2.0.1.tsv"))
 ROI_SRC = winpath("C:/tmp/alps_roi/old_ROIs_JHU_ALPS_5mm_radius")
 SLAB_MM, FA_MIN = 8.0, 0.2
 BANDS = (8.0, 12.0, 16.0)   # 8 mm was tuned on 1.5 mm data; 2 mm needs more
