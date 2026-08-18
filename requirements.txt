@@ -1,0 +1,36 @@
+# Dependencies for the analysis scripts in this directory.
+#
+#   uv venv
+#   uv pip install -r requirements.txt
+#
+# Versions are those the reported results were produced under, on Python 3.14.2.
+# Loosen the pins if you need to; nothing here relies on version-specific
+# behaviour, but the numbers in the manuscript were generated with these.
+
+pandas==3.0.3
+numpy==2.4.6
+scipy==1.17.1
+
+# NIfTI reading. Needed by any script that touches image data rather than a
+# cached CSV, which is about a third of them.
+nibabel==5.4.2
+
+# Figures only.
+matplotlib==3.10.9
+
+# Mixed models and clustered standard errors, used by the reliability and
+# covariate analyses.
+statsmodels==0.14.6
+
+# Two scripts import code that is not on PyPI and is not required for the rest:
+#
+#   axis_error_sensitivity.py  imports dti_alps_refined, the public package at
+#                              https://github.com/snhwang/dti-alps-refined
+#                              Install it with:  uv pip install -e ../../dti-alps-refined
+#
+#   tn_alps.py                 imports fastapi_diffusion_processor, an internal
+#                              pipeline module, inside a try block. The script
+#                              runs without it; that import is only used when
+#                              regenerating tensors from source DWI.
+#
+# Everything reachable from regenerate_and_diff.py runs with the pins above.
