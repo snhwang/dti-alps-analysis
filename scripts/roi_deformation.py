@@ -24,7 +24,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from data_paths import winpath
+from data_paths import winpath, refined_rois
 
 import atomic_io  # noqa: F401  writes become atomic on import
 
@@ -32,8 +32,7 @@ warnings.filterwarnings("ignore")
 HERE = Path(__file__).resolve().parent
 DIFF = HERE.parent.parent / "diffusion"
 OUT = winpath("Q:/dti_output")
-TEMPLATE = Path(r"C:\Users\Scott\Documents\Work\dti-alps-refined"
-                r"\dti_alps_refined\rois\L_SCR.nii.gz")
+TEMPLATE = refined_rois() / "L_SCR.nii.gz"
 ROIS = ("L_SCR", "R_SCR", "L_SLF", "R_SLF")
 COHORTS = (("DLBS", "HCP/lifespan_alps_results.csv", "DTI_Session_ID"),
            ("HCP-A", "HCP/alps_results_2026-02-22.csv", "Session_ID"))

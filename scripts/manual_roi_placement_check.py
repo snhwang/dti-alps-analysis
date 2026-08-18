@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from data_paths import winpath
+from data_paths import winpath, refined_rois
 
 import atomic_io  # noqa: F401  writes become atomic on import
 
@@ -75,8 +75,7 @@ def main() -> None:
             continue
         # the template grid: use the shipped atlas-space ROI as reference
         if ref_template is None:
-            ref_template = Path(r"C:\Users\Scott\Documents\Work\dti-alps-refined"
-                                r"\dti_alps_refined\rois\L_SCR.nii.gz")
+            ref_template = refined_rois() / "L_SCR.nii.gz"
         dst = sd / "atlas" / "alps_rois_manual_template.nii.gz"
         if not warp_to_template(man, ref_template, warp, dst):
             continue

@@ -29,7 +29,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from data_paths import winpath
+from data_paths import winpath, refined_rois
 
 import atomic_io  # noqa: F401  writes become atomic on import
 
@@ -41,7 +41,7 @@ from direction_estimators import principal, align, X, Y, Z
 
 DIFF = HERE.parent.parent / "diffusion"
 OUT = winpath("Q:/dti_output")
-TEMPLATE_ROIS = Path(r"C:\Users\Scott\Documents\Work\dti-alps-refined\dti_alps_refined\rois")
+TEMPLATE_ROIS = refined_rois()
 SMALL = HERE / "rois_2p5mm"
 CENTRES = {"L_SCR": (-26, -16, 27), "R_SCR": (26, -16, 27),
            "L_SLF": (-38, -16, 27), "R_SLF": (38, -16, 27)}

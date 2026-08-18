@@ -70,3 +70,20 @@ def require(p, what: str = "data") -> Path:
             f"mounted, or set WSL_DRIVE_ROOT if your wsl.conf uses another prefix."
         )
     return q
+
+
+def refined_repo() -> Path:
+    """The dti-alps-refined checkout.
+
+    Set DTI_ALPS_REFINED to your clone. Otherwise it is looked for beside the
+    directory holding this repository, which is how it sits in the working tree.
+    """
+    env = os.environ.get("DTI_ALPS_REFINED")
+    if env:
+        return Path(winpath(env))
+    return Path(__file__).resolve().parent.parent.parent / "dti-alps-refined"
+
+
+def refined_rois() -> Path:
+    """The four measurement regions in template space, shipped with the package."""
+    return refined_repo() / "dti_alps_refined" / "rois"
