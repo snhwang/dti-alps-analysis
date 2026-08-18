@@ -33,6 +33,7 @@ Outputs (written next to this script)
 
 from __future__ import annotations
 
+import argparse
 import warnings
 from itertools import combinations
 from pathlib import Path
@@ -47,9 +48,23 @@ from scipy import stats
 warnings.filterwarnings("ignore")
 
 HERE = Path(__file__).resolve().parent
-HCP = HERE.parent.parent / "diffusion" / "HCP"
-ALPS_CSV = HCP / "lifespan_alps_results.csv"
-DEV_CSV = HCP / "alps_axis_deviations.csv"
+DIFF = HERE.parent.parent / "diffusion"
+HCP = DIFF / "HCP"
+_COHORTS = {
+    "manual": (HCP / "lifespan_alps_results.csv",
+               HCP / "alps_axis_deviations.csv"),
+    "auto": (DIFF / "DLBS" / "dlbs_alps_auto_cubic.csv",
+             DIFF / "DLBS" / "dlbs_alps_auto_axis_deviations.csv"),
+    "spheres": (DIFF / "DLBS" / "dlbs_alps_spheres_5mm.csv",
+                DIFF / "DLBS" / "dlbs_alps_spheres_axis_deviations.csv"),
+}
+_ap = argparse.ArgumentParser()
+_ap.add_argument("--cohort", choices=sorted(_COHORTS), default="manual",
+                 help="which region set to analyse; outputs are suffixed by it")
+_args, _ = _ap.parse_known_args()
+COHORT = _args.cohort
+SUF = "" if COHORT == "manual" else f"_{COHORT}"
+ALPS_CSV, DEV_CSV = _COHORTS[COHORT]
 
 FA_DROP_THRESHOLD = 20.0
 MOTION_THRESHOLD = 0.5
@@ -93,10 +108,13 @@ merged = alps.merge(
 need_lr = [c for cols in METRICS.values() for c in cols[:2]]
 cc = merged.dropna(subset=["Age"] + need_lr).copy()
 n_complete = len(cc)
-cc = cc[
-    (cc["Max_Pct_Dropped"] <= FA_DROP_THRESHOLD)
-    & (cc["Eddy_Mean_RMS"] <= MOTION_THRESHOLD)
-].copy()
+_qc = {"Max_Pct_Dropped": FA_DROP_THRESHOLD, "Eddy_Mean_RMS": MOTION_THRESHOLD}
+_applied = [c for c in _qc if c in cc.columns]
+for _c in _applied:
+    cc = cc[cc[_c] <= _qc[_c]]
+cc = cc.copy()
+QC_APPLIED = _applied
+print(f"QC filters applied: {_applied or 'none, columns absent from this cohort'}")
 
 wave_order = {"ses-wave1": 1, "ses-wave2": 2, "ses-wave3": 3}
 cc["wave"] = cc["Session"].map(wave_order)
@@ -297,7 +315,7 @@ for name, (lcol, rcol, _) in METRICS.items():
             }
         )
 
-pd.DataFrame(rel_rows).to_csv(HERE / "reliability_table.csv", index=False)
+pd.DataFrame(rel_rows).to_csv(HERE / f"reliability_table{SUF}.csv", index=False)
 
 
 # ---------------------------------------------------------------------------
@@ -408,8 +426,8 @@ for xcol, xlabel in (("d_theta_PVS", "|dtheta_PVS|"), ("d_theta_SCR", "|dtheta_S
         }
         pairs.attrs.setdefault("summary", []).append(pair_rows_out)
 
-pd.DataFrame(pairs.attrs["summary"]).to_csv(HERE / "repositioning_table.csv", index=False)
-pairs.to_csv(HERE / "repositioning_pairs.csv", index=False)
+pd.DataFrame(pairs.attrs["summary"]).to_csv(HERE / f"repositioning_table{SUF}.csv", index=False)
+pairs.to_csv(HERE / f"repositioning_pairs{SUF}.csv", index=False)
 
 say()
 say("--- Paired between-wave change, each variant against Classic ---")
@@ -456,7 +474,7 @@ say()
 say("Negative differences favour the corrected variant (smaller between-wave change).")
 say("The Wilcoxon p treats the 78 observations as independent and so is anti-")
 say("conservative; the clustered bootstrap CI is the one to quote.")
-pd.DataFrame(change_rows).to_csv(HERE / "between_wave_change.csv", index=False)
+pd.DataFrame(change_rows).to_csv(HERE / f"between_wave_change{SUF}.csv", index=False)
 
 
 # ---------------------------------------------------------------------------
@@ -525,7 +543,7 @@ for name, (lcol, rcol, _) in METRICS.items():
         {"side": "L-R", "metric": name, "n": len(cc), "r": r, "p": p, "slope": sl}
     )
 
-pd.DataFrame(age_rows).to_csv(HERE / "age_lr_table.csv", index=False)
+pd.DataFrame(age_rows).to_csv(HERE / f"age_lr_table{SUF}.csv", index=False)
 
 
 # ---------------------------------------------------------------------------
@@ -585,5 +603,5 @@ for name, (_, _, acol) in METRICS.items():
     se = float(fit.bse["Age_c"])
     say(f"{name:<10s} {b:10.6f} {se:9.6f} {b/se:7.3f} {float(fit.pvalues['Age_c']):10.6f}")
 
-(HERE / "longitudinal_reliability_report.txt").write_text("\n".join(lines), encoding="utf-8")
+(HERE / f"longitudinal_reliability_report{SUF}.txt").write_text("\n".join(lines), encoding="utf-8")
 print(f"\nWrote {HERE / 'longitudinal_reliability_report.txt'}")

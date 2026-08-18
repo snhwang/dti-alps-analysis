@@ -54,6 +54,25 @@ letters are literals. Change them to your own locations first.
 
     grep -rn "winpath\|:/" scripts/*.py
 
+## Scripts that take a cohort
+
+Some scripts analyse more than one region set and take a flag, because running
+them without one silently gives you whichever cohort the default names. Outputs
+are suffixed by the choice so two runs cannot overwrite each other.
+
+    python scripts/longitudinal_reliability.py --cohort manual   # hand-drawn regions
+    python scripts/longitudinal_reliability.py --cohort auto     # atlas placement
+    python scripts/longitudinal_reliability.py --cohort spheres  # 5 mm spheres
+
+This one produces the between-visit reliability and the repositioning
+sensitivity, including the change in the index per degree of change in the
+scanner-to-anatomy angle. `--cohort manual` writes the unsuffixed files;
+the others append `_auto` or `_spheres`.
+
+`scripts/reliability_analysis.py` takes `--input` and `--label` instead, and
+`scripts/manual_vs_atlas_icc.py` computes both region sets on one estimator so
+the two are directly comparable.
+
 ## Running
 
 Each script is self-contained and documented at the top of the file, which is the
