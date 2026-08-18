@@ -1,11 +1,11 @@
-# Dependencies for the analysis scripts in this directory.
+# Dependencies for the analysis scripts in scripts/.
 #
 #   uv venv
 #   uv pip install -r requirements.txt
 #
-# Versions are those the reported results were produced under, on Python 3.14.2.
-# Loosen the pins if you need to; nothing here relies on version-specific
-# behaviour, but the numbers in the manuscript were generated with these.
+# Versions are those the results in the manuscript were produced under, on
+# Python 3.14.2. Loosen the pins if you need to. Nothing here relies on
+# version-specific behaviour, but these are what the numbers came from.
 
 pandas==3.0.3
 numpy==2.4.6
@@ -22,15 +22,17 @@ matplotlib==3.10.9
 # covariate analyses.
 statsmodels==0.14.6
 
-# Two scripts import code that is not on PyPI and is not required for the rest:
+# Not on PyPI, and not needed for most of the scripts:
 #
-#   axis_error_sensitivity.py  imports dti_alps_refined, the public package at
-#                              https://github.com/snhwang/dti-alps-refined
-#                              Install it with:  uv pip install -e ../../dti-alps-refined
+#   scripts/axis_error_sensitivity.py imports dti_alps_refined. Clone and
+#   install the companion package if you want that one:
 #
-#   tn_alps.py                 imports fastapi_diffusion_processor, an internal
-#                              pipeline module, inside a try block. The script
-#                              runs without it; that import is only used when
-#                              regenerating tensors from source DWI.
+#       git clone https://github.com/snhwang/dti-alps-refined
+#       uv pip install -e dti-alps-refined
 #
-# Everything reachable from regenerate_and_diff.py runs with the pins above.
+#   scripts/tn_alps.py imports an internal pipeline module inside a try block.
+#   The script runs without it; that path is only used when regenerating
+#   tensors from source DWI rather than reading fitted ones.
+#
+# FSL is a separate install (https://fsl.fmrib.ox.ac.uk), not a Python package.
+# Several scripts shell out to it for registration and for the tract atlases.
