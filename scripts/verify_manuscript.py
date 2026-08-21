@@ -1485,32 +1485,43 @@ check('Schilling keeps the quantification and high-b result', 1.0,
       float('quantify that coherence' in _co))
 
 
-# The two-region geometry, Appendix A. Pitch is the only rotation that grows
-# both denominator terms, so it should dominate roll and yaw by a wide margin,
-# and the common perpendicular should sit farther from v2 than scanner x does.
+# The two-region geometry, Appendix A. The claims there are analytic, so these
+# check identities rather than sampled values: the closed forms must reproduce
+# direct tensor rotation, pitch must be signed, roll must equal yaw, and the
+# stated sign-change condition must predict the sign in every case.
 _tr = pd.read_csv(HERE / 'tract_orthogonality_rotation.csv')
+
+check('closed forms match direct rotation to machine precision', 1.0,
+      float(_tr.closed_minus_direct.abs().max() < 1e-12))
+_moving = _tr[_tr.degrees > 0]
+check('pitch lowers the index at every ratio and angle', 1.0,
+      float((_moving[_moving.rotation == 'pitch']['pct_change'] < 0).all()))
+_ry = _moving.pivot_table(index=['rho', 'degrees'], columns='rotation',
+                          values='index')
+check('roll equals yaw exactly', 1.0,
+      float((_ry['roll'] - _ry['yaw']).abs().max() < 1e-12))
+
+# kappa > 1 always, so -(kappa - 1) is strictly negative. The transverse
+# coefficient changes sign at kappa = rho^2 + rho - 1, which is the manuscript's
+# stated condition, and it has to agree with the sign actually observed.
+for _rho in sorted(_tr.rho.unique()):
+    _k = float(_tr[_tr.rho == _rho].kappa.iloc[0])
+    _obs = _tr[(_tr.rho == _rho) & (_tr.degrees == 15)
+               & (_tr.rotation == 'roll')]['pct_change'].iloc[0]
+    check(f'sign condition predicts roll at rho {_rho}', 1.0,
+          float((_k > _rho ** 2 + _rho - 1) == (_obs > 0)))
+
 _r15 = _tr[(_tr.rho == 1.5) & (_tr.degrees == 15)].set_index('rotation')
-for _d, _pitch in ((10, -5.69), (15, -11.81), (20, -18.96)):
-    _row = _tr[(_tr.rho == 1.5) & (_tr.degrees == _d)].set_index('rotation')
-    check(f'pitch at {_d} degrees, rho 1.5', _pitch,
-          float(_row.loc['pitch', 'pct_change']), tol=2e-3)
-for _d, _rollyaw in ((10, 0.25), (15, 0.55), (20, 0.95)):
-    _row = _tr[(_tr.rho == 1.5) & (_tr.degrees == _d)].set_index('rotation')
-    for _ax in ('roll', 'yaw'):
-        check(f'{_ax} at {_d} degrees, rho 1.5', _rollyaw,
-              float(_row.loc[_ax, 'pct_change']), tol=6e-3)
-check('roll and yaw are exactly equal', 1.0,
-      float(abs(_r15.loc['roll', 'pct_change']
-                - _r15.loc['yaw', 'pct_change']) < 1e-9))
-check('pitch dominates roll by more than tenfold', 1.0,
-      float(abs(_r15.loc['pitch', 'pct_change'])
-            > 10 * abs(_r15.loc['roll', 'pct_change'])))
-_r172 = _tr[(_tr.rho == 1.72) & (_tr.degrees == 15)].set_index('rotation')
-check('pitch at 15 degrees, rho 1.72', -13.17,
-      float(_r172.loc['pitch', 'pct_change']), tol=2e-3)
-check('roll and yaw stay below one percent at rho 1.72', 1.0,
-      float(max(abs(_r172.loc['roll', 'pct_change']),
-                abs(_r172.loc['yaw', 'pct_change'])) < 1.0))
+check('pitch at 15 degrees, rho 1.5', -11.81,
+      float(_r15.loc['pitch', 'pct_change']), tol=2e-3)
+check('roll and yaw at 15 degrees, rho 1.5', 0.55,
+      float(_r15.loc['roll', 'pct_change']), tol=1e-2)
+_kap = float(_tr[_tr.rho == 1.5].kappa.iloc[0])
+check('coefficient ratio at rho 1.5', 24.0,
+      abs(-(_kap - 1) / ((_kap + 1 - 1.5 - 1.5 ** 2) / 3.0)), tol=1e-2)
+for _rho, _kappa in ((1.2, 2.64), (1.5, 3.00), (1.72, 3.26), (2.0, 3.60)):
+    check(f'kappa tabulated at rho {_rho}', _kappa,
+          float(_tr[_tr.rho == _rho].kappa.iloc[0]), tol=3e-3)
 
 _ta = pd.read_csv(HERE / 'tract_orthogonality_alignment.csv')
 _ta = _ta.set_index(['cohort', 'measure'])
@@ -1533,12 +1544,18 @@ check('alignment table agrees with the shortfall decomposition, cross',
       float(_ta.loc[('DLBS', 'v2_to_cross'), 'median_deg']), tol=3e-3)
 
 _tg = ' '.join(TEX.split())
-check('the mechanism is stated, not just the numbers', 1.0,
-      float('leaves $D_{xx}$ unchanged in both regions' in _tg))
+check('the pitch result is given in closed form', 1.0,
+      float('(\\kappa - 1)\\sin^2\\theta' in _tg))
+check('the sign of the pitch effect is argued, not sampled', 1.0,
+      float('Pitch always lowers the index, with no tissue exception' in _tg))
+check('roll-yaw equality is proved, not observed', 1.0,
+      float('proves their equality rather than observing it' in _tg))
+check('the transverse sign change is stated', 1.0,
+      float('\\kappa = \\rho^2 + \\rho - 1' in _tg))
+check('signed bias is distinguished from scatter', 1.0,
+      float('reappears as an effect on that covariate' in _tg))
 check('existence of a shared axis is not confused with alignment', 1.0,
       float('determined but not aligned' in _tg))
-check('the roll-yaw symmetry is explained', 1.0,
-      float('exchanging the two scanner axes exchanges the two regions' in _tg))
 check('the section disclaims the perivascular premise', 1.0,
       float('rather than from any perivascular premise' in _tg))
 

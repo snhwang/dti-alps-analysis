@@ -5,27 +5,58 @@ Classic ALPS is
     (Dxx_proj + Dxx_assoc) / (Dyy_proj + Dzz_assoc)
 
 with x left-right, y anterior-posterior, z superior-inferior. Projection fibers
-run along z and association fibers along y, so the two tracts are close to
-perpendicular. That is what lets a single axis serve both regions, and it has two
-consequences the manuscript reports.
+run along z and association fibers along y, so with lambda2 on x in both regions
+the tensors are
 
-Part one, which rotation hurts. Pitch is rotation about x. Rotation about x
-leaves Dxx exactly unchanged, so both numerator terms are invariant, and it mixes
-y with z, which are precisely the two axes carrying the two fibers. lambda1
-therefore enters both denominator terms at once, in the same direction, with
-nothing in the numerator to offset it. Roll and yaw each disturb one term only,
-and that term is partly offset by its partner in the same sum. This part is
-simulation and uses no participant data.
+    D_proj  = diag(l2, l3, l1)          D_assoc = diag(l2, l1, l3)
 
-Part two, what the residual non-perpendicularity costs. The common perpendicular
-to two non-parallel directions exists and is unique, so non-perpendicularity
-never prevents a shared axis. What it does is use up the freedom. One
-perpendicularity constraint leaves a plane of admissible axes, within which one
-could be chosen to align with v2 and attain the bound exactly. A second
-constraint pins the axis to a line, leaving nothing with which to point it at v2
-in either region. The determined axis is then not the aligned one, and measured,
-it is farther from v2 than scanner x is. This part reads the measured-axis tables
-and skips with a message if they are absent.
+and the index reads l2 / l3 = rho at zero rotation.
+
+Part one is closed form. Rotate the head by theta and read off the transformed
+diagonal elements of R D R^T.
+
+  Pitch, about x. Rotation about x leaves Dxx unchanged, so the numerator stays
+  2 l2, and it maps both denominator terms to l3 cos^2 + l1 sin^2. Writing
+  kappa = l1 / l3,
+
+      R_pitch(theta) / rho = 1 / (1 + (kappa - 1) sin^2 theta)
+
+  This depends on kappa alone, not on rho. Since l1 > l3 in any anisotropic
+  voxel, kappa > 1, so the factor is strictly below one for every non-zero
+  theta. Pitch always lowers the index. The sign is not an empirical finding
+  and admits no tissue exception.
+
+  Roll, about y, and yaw, about z, give algebraically identical numerators and
+  denominators,
+
+      R(theta) = (2 l2 + (l1 + l3 - 2 l2) sin^2) / (2 l3 + (l2 - l3) sin^2)
+
+  which proves the equality rather than observing it. Exchanging y and z
+  exchanges the two regions and leaves the formula invariant, and that same
+  exchange carries roll into yaw.
+
+  To first order in sin^2 theta the fractional changes are
+
+      pitch     -(kappa - 1)
+      roll/yaw  (kappa + 1 - rho - rho^2) / (2 rho)
+
+  The pitch coefficient cannot vanish. The roll and yaw coefficient is the
+  difference between a numerator gain and a denominator gain, it vanishes at
+  kappa = rho^2 + rho - 1, and it changes sign there. In white matter that
+  crossing sits inside the plausible range, so the transverse rotations are
+  both small and of undetermined sign while pitch is neither.
+
+Both forms are checked against direct tensor rotation below, and agree to
+machine precision. This part uses no participant data.
+
+Part two is measured. The common perpendicular to two non-parallel directions
+exists and is unique, so non-perpendicularity never prevents a shared axis. What
+it does is use up the freedom. One perpendicularity constraint leaves a plane of
+admissible axes, within which one could be chosen to align with v2 and attain
+the bound exactly. A second constraint pins the axis to a line, leaving nothing
+with which to point it at v2 in either region. The determined axis is then not
+the aligned one, and measured, it is farther from v2 than scanner x is. This
+part reads the measured-axis tables and skips with a message if they are absent.
 
     python tract_orthogonality.py
 
@@ -42,28 +73,18 @@ import pandas as pd
 import atomic_io  # noqa: F401  writes become atomic on import
 
 HERE = Path(__file__).resolve().parent
-L1 = 1.2e-3              # mm^2/s, along the fiber
+L1 = 1.2e-3              # mm^2/s along the fiber, held fixed
 LT = 0.5e-3              # mm^2/s, mean of the transverse pair, held fixed
 DEGREES = (5, 10, 15, 20, 30)
-RATIOS = (1.5, 1.72)     # representative, and the measured regional value
-AXES = (("pitch", "x"), ("roll", "y"), ("yaw", "z"))
+RATIOS = (1.2, 1.5, 1.72, 2.0)
 COHORTS = (("HCP-A", "measured_pvs_axis_hcpa_b1500_all.csv"),
            ("DLBS", "measured_pvs_axis_dlbs.csv"))
 
 
-def transverse(rho):
-    """The transverse pair with the requested ratio, at fixed transverse mean."""
+def eigenvalues(rho):
+    """The triple with the requested transverse ratio, at fixed transverse mean."""
     l3 = 2 * LT / (1 + rho)
-    return rho * l3, l3
-
-
-def tensor(fiber, rho):
-    """Diagonal tensor in the scanner frame with the fiber along the named axis.
-
-    lambda2 lies on x in both regions, which is the premise classic ALPS makes.
-    """
-    l2, l3 = transverse(rho)
-    return np.diag([l2, l3, L1]) if fiber == "z" else np.diag([l2, L1, l3])
+    return L1, rho * l3, l3
 
 
 def rot(axis, deg):
@@ -76,43 +97,74 @@ def rot(axis, deg):
     return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
 
 
-def alps(axis, deg, rho):
-    """Classic index after the head rotates by deg about the named scanner axis."""
+def by_rotation(axis, deg, rho):
+    """The index after rotating both tensors directly. The thing to be matched."""
+    l1, l2, l3 = eigenvalues(rho)
     R = rot(axis, deg)
-    P = R @ tensor("z", rho) @ R.T          # projection region, fiber along z
-    A = R @ tensor("y", rho) @ R.T          # association region, fiber along y
+    P = R @ np.diag([l2, l3, l1]) @ R.T
+    A = R @ np.diag([l2, l1, l3]) @ R.T
     return (P[0, 0] + A[0, 0]) / (P[1, 1] + A[2, 2])
 
 
+def pitch_closed(deg, rho):
+    l1, _, l3 = eigenvalues(rho)
+    return rho / (1 + (l1 / l3 - 1) * np.sin(np.radians(deg)) ** 2)
+
+
+def transverse_closed(deg, rho):
+    """Roll and yaw, which share one expression."""
+    l1, l2, l3 = eigenvalues(rho)
+    u = np.sin(np.radians(deg)) ** 2
+    return (2 * l2 + (l1 + l3 - 2 * l2) * u) / (2 * l3 + (l2 - l3) * u)
+
+
 def rotation_part():
-    rows = []
+    rows, worst = [], 0.0
     for rho in RATIOS:
-        base = alps("x", 0, rho)
-        print(f"\n   rho = {rho:.2f}, index at zero rotation = {base:.4f}\n")
-        print(f"   {'degrees':>8s} {'pitch':>10s} {'roll':>10s} {'yaw':>10s}")
+        l1, _, l3 = eigenvalues(rho)
+        kappa = l1 / l3
         for d in DEGREES:
-            pct = {}
-            for name, ax in AXES:
-                pct[name] = 100 * (alps(ax, d, rho) / base - 1)
-                rows.append(dict(rho=rho, rotation=name, degrees=d,
-                                 pct_change=round(pct[name], 4)))
-            print(f"   {d:8d} {pct['pitch']:+10.2f} {pct['roll']:+10.2f} "
-                  f"{pct['yaw']:+10.2f}")
+            for name, axis, closed in (("pitch", "x", pitch_closed),
+                                       ("roll", "y", transverse_closed),
+                                       ("yaw", "z", transverse_closed)):
+                exact, direct = closed(d, rho), by_rotation(axis, d, rho)
+                worst = max(worst, abs(exact - direct))
+                rows.append(dict(rho=rho, kappa=round(kappa, 6), rotation=name,
+                                 degrees=d, index=round(exact, 8),
+                                 pct_change=round(100 * (exact / rho - 1), 4),
+                                 closed_minus_direct=exact - direct))
+
     out = pd.DataFrame(rows)
     out.to_csv(HERE / "tract_orthogonality_rotation.csv", index=False)
 
-    p15 = out[(out.rho == 1.5) & (out.degrees == 15)].set_index("rotation")
-    ratio = abs(p15.loc["pitch", "pct_change"] / p15.loc["roll", "pct_change"])
-    print(f"\n   At 15 degrees and rho = 1.5, pitch costs {ratio:.0f} times what "
-          f"roll or yaw does.")
-    print("   Roll and yaw are equal because exchanging y and z exchanges the two")
-    print("   regions and leaves the formula unchanged, in this idealized pair.")
+    print("   Closed forms against direct tensor rotation")
+    print(f"   worst absolute disagreement over all conditions: {worst:.2e}\n")
+
+    print("   First-order coefficients, fractional change per sin^2(theta)\n")
+    print(f"   {'rho':>6} {'kappa':>7} {'pitch':>9} {'roll/yaw':>10} "
+          f"{'sign flip at kappa':>19} {'ratio':>7}")
+    for rho in RATIOS:
+        l1, _, l3 = eigenvalues(rho)
+        k = l1 / l3
+        pitch = -(k - 1)
+        trans = (k + 1 - rho - rho ** 2) / (2 * rho)
+        print(f"   {rho:6.2f} {k:7.3f} {pitch:9.3f} {trans:10.4f} "
+              f"{rho**2 + rho - 1:19.3f} {abs(pitch / trans):7.1f}")
+
+    print("\n   The pitch coefficient is -(kappa - 1) and kappa exceeds one in any")
+    print("   anisotropic voxel, so it cannot vanish and cannot change sign. The")
+    print("   transverse coefficient is a difference of competing terms, crosses")
+    print("   zero at kappa = rho^2 + rho - 1, and is small on either side of it.")
+
+    r15 = out[(out.rho == 1.5) & (out.degrees == 15)].set_index("rotation")
+    print(f"\n   At 15 degrees and rho = 1.5: pitch "
+          f"{r15.loc['pitch', 'pct_change']:+.2f}%, roll and yaw "
+          f"{r15.loc['roll', 'pct_change']:+.2f}%.")
     return out
 
 
 def alignment_part():
-    rows = []
-    header = False
+    rows, header = [], False
     print("\n\n   How far v2 sits from each candidate axis\n")
     for cohort, fname in COHORTS:
         path = HERE / fname
