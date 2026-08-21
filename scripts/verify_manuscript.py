@@ -296,11 +296,12 @@ check("TN best corrected after adjustment", -0.180,
       min(_tn_cost(c)[1] for c in _CORR))
 
 # --- statements that must appear verbatim ---
-# The isotropic crossover is quoted three times: Results, Table 1, Discussion.
-# 8.1 deg legitimately appears elsewhere as a deviation angle, so only the count
-# of 8.2 is checked.
-results.append((TEX.count(r"$8.2^{\circ}$") == 3,
-                "isotropic crossover is 8.2 in all three places", None, None))
+# The isotropic crossover is quoted twice: the thresholds table and the Discussion.
+# The Results prose that restated it went when the correction stopped being
+# recommended. 8.1 appears elsewhere as a deviation angle, so only 8.2 counts.
+
+results.append((TEX.count(r"$8.2^{\circ}$") == 2,
+                "isotropic crossover is 8.2 in both places", None, None))
 
 for phrase in [r"$3.67\%$ (flat)", r"$9.1^{\circ}$", r"$45.0\%$",
                r"r=-0.414", r"$r=+0.332$", r"$r=+0.258$",
@@ -668,9 +669,9 @@ check("v2 variants retain nothing on age", 1.0,
 _va = _be[_be.variant.isin(["v2_slab", "v2_sphere"]) & _be.p.notna()]
 check("v2 variants never significant given the ratio", 1.0,
       float((_va.p > 0.05).all()), tol=1e-9)
-# and the title says so
-results.append(("and the Corrected Index Approaches Radial Anisotropy" in TEX,
-                "title states the degeneration", None, None))
+# and the title names the three objects the paper relates
+results.append(("Head Position, DTI-ALPS, and Radial Anisotropy" in TEX,
+                "title names the three objects", None, None))
 
 # --- the bound is proved, so check the algebra rather than only the data ---
 _bp = pd.read_csv(HERE / "ratio_bound_proof.csv")
@@ -703,9 +704,8 @@ results.append(("R(\\alpha) = \\frac" in TEX
 # Figure 8. Ours is the misaligned case: the bound, its monotonicity, the
 # condition for equality, and the second-order rate. Not the quantity, not the
 # observation, and not the aligned-case identity.
-for _phrase in ("not among",
-                "connection to\nDTI-ALPS is Schilling's",
-                "Figure~8 establishes the aligned case"):
+for _phrase in ("first expressed the index as",
+                "state the same reduction from the assumed geometry"):
     results.append((_phrase in TEX,
                     f"ratio attribution: {_phrase[:40]}", None, None))
 
@@ -982,11 +982,16 @@ for _coh, _f, _exp in (("hcpa", "measured_pvs_axis_hcpa_b1500_all.csv",
         check(f"{_coh} {_v} tracks the eigenvalue ratio", _e,
               float(stats.pearsonr(_s[_v], _s.pv_perp)[0]), tol=3e-3)
 
-check("Schilling credited with the aligned-case derivation, not just an assertion",
-      1.0, float("Figure~8 establishes the aligned case" in TEX))
-check("Schilling quoted with their own proportionality, not sharpened to =",
-      1.0, float(r"\text{ALPS}\propto\lambda_2/\lambda_3" in TEX
-                 and "written there as" in TEX))
+_att = " ".join(TEX.split())
+check("Wright credited with the identity, and first", 1.0,
+      float("Wright et al.\\ first expressed the index as" in _att
+            and _att.index("Wright et al.\\ first expressed")
+                < _att.index("Schilling et al.\\ state the same reduction")))
+check("their equal-ratio assumption named", 1.0,
+      float("equal ratios in the two tracts" in _att))
+check("proportionality kept, and its reason given", 1.0,
+      float(r"\propto\lambda_2/\lambda_3" in TEX
+            and "is the right symbol" in " ".join(TEX.split())))
 check("v2 is not the vessel direction, stated against our own variant", 1.0,
       float("tested that directly against segmented vasculature" in TEX
             and "not the" in TEX and "direction of the vessel" in TEX))
@@ -1075,7 +1080,7 @@ check("both conditions for the bound are stated up front", 1.0,
       float("two conditions govern the approach" in " ".join(TEX.split())
             and "not bounded by the ratio at all" in " ".join(TEX.split())))
 check("the invariance argument precedes the bound", 1.0,
-      float(TEX.index("cannot always be equal") < TEX.index("is a bound")))
+      float(TEX.index("cannot always be equal") < TEX.index("as a bound")))
 check("reduction stated in the Introduction", 1.0,
       float(TEX.index("reduces to the ratio of the eigenvalues") < TEX.index("section{Methods")))
 check("degenerate-perturbation mechanism given", 1.0,
@@ -1097,7 +1102,8 @@ check("sorting bias treated in the manuscript", 1.0,
 check("pooling stated as a weighted average, not a bare ratio", 1.0,
       float("a ratio of sums is" in TEX and "weighted average of the two regional" in TEX))
 check("our contribution scoped to the misaligned case", 1.0,
-      float("is a bound" in " ".join(TEX.split())))
+      float("as a bound" in " ".join(TEX.split())
+            or "is bounded by" in " ".join(TEX.split())))
 check("no claim that Schilling gave no derivation", 0.0,
       float("derivation not given there" in TEX
             or "derivation they did not give" in TEX))
@@ -1137,7 +1143,7 @@ check("variant section describes rather than prescribes", 1.0,
       float("rather than as candidate methods" in TEX
             and "menu but a series" in TEX))
 check("no recommendation is drawn", 1.0,
-      float("We draw no recommendation from this" in TEX))
+      float("no recommendation about which quantity to compute" in " ".join(TEX.split())))
 
 # ALPS-PAS: the second published method. Per-voxel eigenvector selection means
 # the per-voxel inequality holds exactly, so it must never exceed the bound.
@@ -1207,11 +1213,8 @@ for _stale in ('keep the directional form and recommend it',
                'the formulation we adopted'):
     check(f'stale recommendation absent: {_stale[:34]}', 0.0,
           float(_stale in TEX))
-check('the remainder is stated to have no basis', 1.0,
-      float('no basis for an interpretation' in TEX
-            and 'posture-dependent geometric' in TEX))
-check('both components said to be measurable separately', 1.0,
-      float('had separately and better' in TEX))
+check('the remainder is stated to have no basis for interpretation', 1.0,
+      float('no basis for an interpretation' in TEX))
 check('the Conclusion states the bound', 1.0,
       float('bounded above by' in TEX[TEX.index('section{Conclusion'):]
             and 'second order in the angular error'
@@ -1395,6 +1398,91 @@ check('refined interval contains zero', 1.0,
 _f = ' '.join(TEX.split())
 check('manuscript quotes the reproduced slope', 1.0,
       float('$+0.78\\%$ per degree' in _f))
+
+# The interpretation section concedes the discriminative literature before
+# contesting its attribution, and reframes attribution rather than practice.
+_rf = ' '.join(TEX.split())
+check('discriminative findings conceded first', 1.0,
+      float('The index discriminates, and that is not in question here' in _rf))
+check('reframe is about attribution, not practice', 1.0,
+      float('about attribution, not about practice' in _rf
+            and 'Reported group differences stand' in _rf))
+check('no recommendation on which quantity to compute', 1.0,
+      float('no recommendation about which quantity to compute' in _rf))
+
+# The abstract must credit the known relationship and must not recommend a
+# practice the Discussion declines to recommend.
+_ab = ' '.join(TEX.split())
+_ab = _ab[_ab.index('begin{abstract}') + len('begin{abstract}'):_ab.index('end{abstract}')]
+check('abstract credits the reported relationship', 1.0,
+      float('Schilling et al.' in _ab and 'report that the index tracks' in _ab))
+check('abstract makes no practice recommendation', 0.0,
+      float('should be computed along measured tract' in _ab
+            or 'captures it more simply' in _ab))
+check('abstract states the attribution reframe', 1.0,
+      float('Reported group differences stand' in _ab))
+check('abstract within 250 words', 1.0, float(len(_ab.split()) <= 250)),
+
+# The bound is a Theory section preceding Methods, not a Methods subsection.
+_th = TEX.index('section{Theory}')
+check('Theory precedes Methods', 1.0, float(_th < TEX.index('section{Methods}')))
+check('Theory follows the Introduction', 1.0,
+      float(TEX.index('section{Introduction') < _th))
+check('the measured-axis construction sits with the methods', 1.0,
+      float(TEX.index('The cross product of Section') > TEX.index('section{Methods}')))
+check('the stale label is gone', 0.0, float('sec:measured-axis' in TEX))
+
+# Wright's route was observation, not assumption, and their premise concerns v2
+# rather than the vessel. Both distinctions are load-bearing for the attribution.
+_wr = ' '.join(TEX.split())
+check('Wright credited with an observed alignment', 1.0,
+      float('spatially coherent and aligned with $x$ in both tracts' in _wr))
+check('identity separated from its perivascular reading', 1.0,
+      float('bears on the perivascular reading of the identity and not on' in _wr))
+
+# The regional ratio is formed as a ratio of means, as the index is. Forming it
+# as a mean of voxelwise ratios let near-zero lambda3 voxels dominate and put the
+# body of the corpus callosum at a median of 13 with a maximum of 924.
+_al = pd.read_csv(HERE / 'alps_location_special.csv')
+_rat = [c for c in _al.columns if not c.endswith(' CP') and c not in ('sid', 'Age')]
+check('every regional ratio is physiological', 1.0,
+      float(all(_al[c].max() < 4 for c in _rat)))
+check('twelve regions compared', 12.0, float(len(_rat)))
+from scipy import stats as _st
+_ages = {}
+for _c in _rat:
+    _s = _al[[_c, 'Age']].dropna()
+    _ages[_c] = float(_st.pearsonr(_s[_c], _s.Age)[0])
+check('the ratio falls with age in every region', 12.0,
+      float(sum(v < 0 for v in _ages.values())))
+check('the genu falls faster than the ALPS projection region', 1.0,
+      float(_ages['Genu CC'] < _ages['SCR (ALPS proj)']))
+check('genu age correlation', -0.762, _ages['Genu CC'], tol=3e-3)
+check('the widespread decline is credited to Wright', 1.0,
+      float('Wright et al.' in ' '.join(TEX.split())
+            and 'falls with age across white matter generally' in ' '.join(TEX.split())))
+check('our version is reported as agreement, not as a finding', 1.0,
+      float('Our twelve-label comparison agrees' in ' '.join(TEX.split())))
+
+# Novelty claims must not outrun prior work. Burles et al. showed pitch differs
+# by sex, so 'has not been asked' was contradicted by our own later citation.
+_nv = ' '.join(TEX.split())
+for _over in ('has not been asked', 'not previously been tested',
+              'nobody has', 'has never been'):
+    check(f'no unqualified novelty claim: {_over[:28]}', 0.0, float(_over in _nv))
+check('Burles credited for the sex finding up front', 1.0,
+      float('pitch differs by sex in ADNI' in _nv))
+check('our question scoped to age and clinical group', 1.0,
+      float('covaries with age and with clinical group' in _nv))
+
+# Wright published the v2-coherence observation and the noise argument first.
+# We had credited both to Schilling. Third instance of the same slip in one audit.
+_co = ' '.join(TEX.split())
+check('coherence argument credited to Wright', 1.0,
+      float('Wright et al.\ report the second eigenvector to be spatially coherent'
+            in _co))
+check('Schilling keeps the quantification and high-b result', 1.0,
+      float('quantify that coherence' in _co))
 
 print(f"{'':4s} {'check':<52s} {'claimed':>10s} {'actual':>10s}")
 nfail = 0

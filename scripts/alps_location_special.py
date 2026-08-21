@@ -69,7 +69,8 @@ def main() -> None:
         srt = np.sort(ev, axis=-1)[..., ::-1]
         l1, l2, l3 = srt[..., 0], srt[..., 1], srt[..., 2]
         with np.errstate(divide="ignore", invalid="ignore"):
-            ratio = np.where(l3 > 0, l2 / l3, np.nan)
+            # kept per voxel only for the planarity map; the regional ratio
+            # below is formed as a ratio of means, as the index is
             CP = np.where(l1 > 0, (l2 - l3) / l1, np.nan)
         md = ev.mean(-1)
         nu = np.sqrt(((ev - md[..., None]) ** 2).sum(-1))
@@ -90,7 +91,7 @@ def main() -> None:
                 m = m & band
             if m.sum() < 20:
                 continue
-            rec[nm] = float(np.nanmean(ratio[m]))
+            rec[nm] = float(np.nanmean(l2[m]) / np.nanmean(l3[m]))
             rec[nm + " CP"] = float(np.nanmean(CP[m]))
         rows.append(rec)
         if i % 30 == 0:
