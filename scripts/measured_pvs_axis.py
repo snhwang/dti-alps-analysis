@@ -151,7 +151,9 @@ def main() -> None:
             return {"v1": evec(m, 0), "fa": fa[m], "evals": ev[m], "evecs": vc[m]}
 
         acc = {k: [] for k in VARIANTS}
-        ang = {k: [] for k in ("v2_to_x", "v2_to_cross", "cross_to_x")}
+        ang = {k: [] for k in ("v2_to_x", "v2_to_cross", "cross_to_x",
+                               "v2_proj_to_assoc", "v2_proj_to_cross",
+                               "v2_assoc_to_cross")}
         for hemi, side, scr, slf in (("L", xw < 0, 26, 42), ("R", xw > 0, 25, 41)):
             mp_s = (sph == 1) & side & (fa >= FA_MIN)
             ma_s = (sph == 2) & side & (fa >= FA_MIN)
@@ -222,6 +224,18 @@ def main() -> None:
             ang["v2_to_cross"].append(acute(p_slab, p_cross))
             ang["cross_to_x"].append(acute(p_cross, X))
 
+            # One axis has to serve both regions, and it attains the bound in
+            # both only if v2 is the same direction in each and equals their
+            # common perpendicular. Both halves of that are testable, so the
+            # two regional axes are also estimated apart.
+            p_proj = v2_axis([mp_l])
+            p_assoc = v2_axis([ma_l])
+            if p_proj is not None and p_assoc is not None:
+                p_proj, p_assoc = align(p_proj, X), align(p_assoc, X)
+                ang["v2_proj_to_assoc"].append(acute(p_proj, p_assoc))
+                ang["v2_proj_to_cross"].append(acute(p_proj, p_cross))
+                ang["v2_assoc_to_cross"].append(acute(p_assoc, p_cross))
+
         if not acc["classic"]:
             continue
         rec = {"Subject_ID": r.Subject_ID, "Visit": r.Visit, "Age": r.Age}
@@ -239,9 +253,15 @@ def main() -> None:
     print(f"\n{len(d)} sessions, {len(lon)} longitudinal, {lon.Subject_ID.nunique()} participants\n")
 
     print("axis geometry (degrees, mean)")
-    for k in ("v2_to_x", "v2_to_cross", "cross_to_x"):
+    for k in ("v2_to_x", "v2_to_cross", "cross_to_x",
+              "v2_proj_to_assoc", "v2_proj_to_cross", "v2_assoc_to_cross"):
         if k in d:
-            print(f"  {k:<14s} {d[k].mean():5.1f}")
+            print(f"  {k:<18s} {d[k].mean():5.1f}   median {d[k].median():5.1f}")
+    if "v2_proj_to_assoc" in d:
+        print("\n  A single axis attains the bound in both regions only if the two")
+        print("  regional v2 directions coincide and equal the common perpendicular.")
+        print(f"  They differ by a median {d.v2_proj_to_assoc.median():.1f} degrees, so")
+        print("  no one axis can be the aligned axis for both.")
 
     base = variance_components(lon.dropna(subset=["classic"]), "classic")
     print(f"\n{'variant':<12s} {'ICC':>7s} {'var/classic':>12s} {'r age':>8s} {'disatt':>8s}")

@@ -1543,6 +1543,55 @@ check('alignment table agrees with the shortfall decomposition, cross',
       float(_sd.loc['cross', 'misalign_deg']),
       float(_ta.loc[('DLBS', 'v2_to_cross'), 'median_deg']), tol=3e-3)
 
+# The two-region sufficient statistic. R depends on the two misalignments only
+# through S, and a separation delta between the regional v2 directions costs
+# exactly what one region at delta/2 would. Both are identities, so both are
+# re-derived here rather than read from a file.
+def _R_of_S(S, rho=1.72):
+    return (2 * rho - (rho - 1) * S) / (2 + (rho - 1) * S)
+
+
+def _R_two(ap, aa, rho=1.72):
+    """Ratio of sums, built region by region."""
+    _n = (rho * np.cos(ap) ** 2 + np.sin(ap) ** 2
+          + rho * np.cos(aa) ** 2 + np.sin(aa) ** 2)
+    _d = (rho * np.sin(ap) ** 2 + np.cos(ap) ** 2
+          + rho * np.sin(aa) ** 2 + np.cos(aa) ** 2)
+    return _n / _d
+
+
+_rng = np.random.default_rng(0)
+_wa, _wb = 0.0, 0.0
+for _ in range(4000):
+    _ap, _aa = _rng.uniform(0, np.pi / 2, 2)
+    _S = np.sin(_ap) ** 2 + np.sin(_aa) ** 2
+    _wa = max(_wa, abs(_R_two(_ap, _aa) - _R_of_S(_S)))
+check('R depends on the two angles only through S', 1.0, float(_wa < 1e-12))
+
+for _deg in (5, 10, 14.617, 17.14, 20, 30, 45):
+    _d = np.radians(_deg)
+    _half = _d / 2
+    _single = ((1.72 * np.cos(_half) ** 2 + np.sin(_half) ** 2)
+               / (1.72 * np.sin(_half) ** 2 + np.cos(_half) ** 2))
+    _wb = max(_wb, abs(_R_of_S(1 - np.cos(_d)) - _single))
+check('a delta separation costs exactly what delta/2 costs, exactly', 1.0,
+      float(_wb < 1e-12))
+
+_tf = pd.read_csv(HERE / 'tract_orthogonality_floor.csv').set_index('cohort')
+for _coh, _delta, _floor, _fc, _cc in (('HCP-A', 14.617, 7.309, 1.82, 4.26),
+                                       ('DLBS', 17.139, 8.570, 2.49, 6.50)):
+    check(f'{_coh} regional v2 separation', _delta,
+          float(_tf.loc[_coh, 'v2_disagreement_deg']), tol=3e-3)
+    check(f'{_coh} floor is half the separation', _floor,
+          float(_tf.loc[_coh, 'floor_deg']), tol=3e-3)
+    check(f'{_coh} floor cost', _fc,
+          float(_tf.loc[_coh, 'floor_cost_pct']), tol=1e-2)
+    check(f'{_coh} cross cost', _cc,
+          float(_tf.loc[_coh, 'cross_cost_pct']), tol=1e-2)
+    check(f'{_coh} the determined axis does not reach the floor', 1.0,
+          float(_tf.loc[_coh, 'cross_cost_pct']
+                > _tf.loc[_coh, 'floor_cost_pct']))
+
 _tg = ' '.join(TEX.split())
 check('the pitch result is given in closed form', 1.0,
       float('(\\kappa - 1)\\sin^2\\theta' in _tg))
@@ -1554,6 +1603,13 @@ check('the transverse sign change is stated', 1.0,
       float('\\kappa = \\rho^2 + \\rho - 1' in _tg))
 check('signed bias is distinguished from scatter', 1.0,
       float('reappears as an effect on that covariate' in _tg))
+check('the sufficient statistic is given', 1.0,
+      float('S = \\sin^2\\alpha_{\\text{p}} + \\sin^2\\alpha_{\\text{a}}' in _tg))
+check('the delta/2 equality is called exact', 1.0,
+      float('as an identity rather than as a small-angle approximation' in _tg))
+check('the floor is stated as a measurement', 1.0,
+      float('median $14.6^{\\circ}$ apart' in _tg))
+
 check('existence of a shared axis is not confused with alignment', 1.0,
       float('determined but not aligned' in _tg))
 check('the section disclaims the perivascular premise', 1.0,

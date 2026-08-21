@@ -77,6 +77,7 @@ L1 = 1.2e-3              # mm^2/s along the fiber, held fixed
 LT = 0.5e-3              # mm^2/s, mean of the transverse pair, held fixed
 DEGREES = (5, 10, 15, 20, 30)
 RATIOS = (1.2, 1.5, 1.72, 2.0)
+RHO_TYPICAL = 1.72       # the measured regional value, for costing the angles
 COHORTS = (("HCP-A", "measured_pvs_axis_hcpa_b1500_all.csv"),
            ("DLBS", "measured_pvs_axis_dlbs.csv"))
 
@@ -85,6 +86,20 @@ def eigenvalues(rho):
     """The triple with the requested transverse ratio, at fixed transverse mean."""
     l3 = 2 * LT / (1 + rho)
     return L1, rho * l3, l3
+
+
+def R_of_S(S, rho=RHO_TYPICAL):
+    """Two regions at misalignments alpha_p, alpha_a enter only through
+
+        S = sin^2(alpha_p) + sin^2(alpha_a)
+
+    because the index is a ratio of sums. Minimising S at fixed separation
+    delta between the two regional v2 directions gives alpha_p = alpha_a =
+    delta/2 and S = 1 - cos(delta), so a two-region disagreement of delta costs
+    exactly what a single region misaligned by delta/2 would. That equality is
+    exact, not a small-angle result.
+    """
+    return (2 * rho - (rho - 1) * S) / (2 + (rho - 1) * S)
 
 
 def rot(axis, deg):
@@ -207,10 +222,71 @@ def alignment_part():
     return out
 
 
+def floor_part():
+    """How well could any single axis possibly do, and does the determined one?
+
+    The two regional v2 directions are separated by some angle delta. For any
+    single axis, the spherical triangle inequality gives
+
+        alpha_proj + alpha_assoc >= delta
+
+    so the worse of the two errors is at least delta/2, attained only by the
+    bisector. That is a floor no single-axis variant can beat, set entirely by
+    how much the two regions disagree. Measuring it turns the over-determination
+    argument into a quantity.
+    """
+    rows = []
+    print("\n\n   The floor on any single axis\n")
+    print(f"   {'cohort':8s} {'v2 disagree':>12s} {'floor':>7s} {'cross':>7s} "
+          f"{'floor cost':>11s} {'cross cost':>11s} {'n':>6s}")
+    for cohort, fname in COHORTS:
+        path = HERE / fname
+        if not path.exists():
+            continue
+        m = pd.read_csv(path)
+        need = ("v2_proj_to_assoc", "v2_proj_to_cross", "v2_assoc_to_cross")
+        if not all(c in m.columns for c in need):
+            print(f"   {cohort}: regional v2 columns absent, rerun "
+                  f"measured_pvs_axis.py")
+            continue
+        s = m[list(need)].dropna()
+        delta = s.v2_proj_to_assoc
+        floor = delta / 2.0
+        # the determined axis is judged by its worse region, as the floor is
+        attained = s[["v2_proj_to_cross", "v2_assoc_to_cross"]].max(axis=1)
+        # and the cost of each, through R(S)
+        S_floor = 1 - np.cos(np.radians(delta))
+        S_cross = (np.sin(np.radians(s.v2_proj_to_cross)) ** 2
+                   + np.sin(np.radians(s.v2_assoc_to_cross)) ** 2)
+        cost = lambda S: 100 * (1 - R_of_S(S) / RHO_TYPICAL)
+        rows.append(dict(cohort=cohort,
+                         v2_disagreement_deg=round(float(delta.median()), 3),
+                         floor_deg=round(float(floor.median()), 3),
+                         cross_attains_deg=round(float(attained.median()), 3),
+                         excess_deg=round(float((attained - floor).median()), 3),
+                         floor_cost_pct=round(float(cost(S_floor).median()), 3),
+                         cross_cost_pct=round(float(cost(S_cross).median()), 3),
+                         n=int(len(s))))
+        print(f"   {cohort:8s} {delta.median():12.2f} {floor.median():7.2f} "
+              f"{attained.median():7.2f} {cost(S_floor).median():10.2f}% "
+              f"{cost(S_cross).median():10.2f}% {len(s):6d}")
+
+    if not rows:
+        return pd.DataFrame()
+    out = pd.DataFrame(rows)
+    out.to_csv(HERE / "tract_orthogonality_floor.csv", index=False)
+    print("\n   The two regions disagree, so no single axis is aligned in both. The")
+    print("   best any could do is half that disagreement, and the axis the tract")
+    print("   geometry determines does not reach it. The over-determination is not")
+    print("   an argument about degrees of freedom, it is this many degrees.")
+    return out
+
+
 def main() -> None:
     argparse.ArgumentParser().parse_args()
     rotation_part()
     alignment_part()
+    floor_part()
 
 
 if __name__ == "__main__":
