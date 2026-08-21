@@ -1484,6 +1484,64 @@ check('coherence argument credited to Wright', 1.0,
 check('Schilling keeps the quantification and high-b result', 1.0,
       float('quantify that coherence' in _co))
 
+
+# The two-region geometry, Appendix A. Pitch is the only rotation that grows
+# both denominator terms, so it should dominate roll and yaw by a wide margin,
+# and the common perpendicular should sit farther from v2 than scanner x does.
+_tr = pd.read_csv(HERE / 'tract_orthogonality_rotation.csv')
+_r15 = _tr[(_tr.rho == 1.5) & (_tr.degrees == 15)].set_index('rotation')
+for _d, _pitch in ((10, -5.69), (15, -11.81), (20, -18.96)):
+    _row = _tr[(_tr.rho == 1.5) & (_tr.degrees == _d)].set_index('rotation')
+    check(f'pitch at {_d} degrees, rho 1.5', _pitch,
+          float(_row.loc['pitch', 'pct_change']), tol=2e-3)
+for _d, _rollyaw in ((10, 0.25), (15, 0.55), (20, 0.95)):
+    _row = _tr[(_tr.rho == 1.5) & (_tr.degrees == _d)].set_index('rotation')
+    for _ax in ('roll', 'yaw'):
+        check(f'{_ax} at {_d} degrees, rho 1.5', _rollyaw,
+              float(_row.loc[_ax, 'pct_change']), tol=6e-3)
+check('roll and yaw are exactly equal', 1.0,
+      float(abs(_r15.loc['roll', 'pct_change']
+                - _r15.loc['yaw', 'pct_change']) < 1e-9))
+check('pitch dominates roll by more than tenfold', 1.0,
+      float(abs(_r15.loc['pitch', 'pct_change'])
+            > 10 * abs(_r15.loc['roll', 'pct_change'])))
+_r172 = _tr[(_tr.rho == 1.72) & (_tr.degrees == 15)].set_index('rotation')
+check('pitch at 15 degrees, rho 1.72', -13.17,
+      float(_r172.loc['pitch', 'pct_change']), tol=2e-3)
+check('roll and yaw stay below one percent at rho 1.72', 1.0,
+      float(max(abs(_r172.loc['roll', 'pct_change']),
+                abs(_r172.loc['yaw', 'pct_change'])) < 1.0))
+
+_ta = pd.read_csv(HERE / 'tract_orthogonality_alignment.csv')
+_ta = _ta.set_index(['cohort', 'measure'])
+for _coh, _x, _cr in (('HCP-A', 7.01, 8.79), ('DLBS', 8.93, 11.68)):
+    check(f'{_coh} v2 to scanner x', _x,
+          float(_ta.loc[(_coh, 'v2_to_x'), 'median_deg']), tol=2e-3)
+    check(f'{_coh} v2 to common perpendicular', _cr,
+          float(_ta.loc[(_coh, 'v2_to_cross'), 'median_deg']), tol=2e-3)
+    check(f'{_coh} common perpendicular is the worse axis', 1.0,
+          float(_ta.loc[(_coh, 'v2_to_cross'), 'median_deg']
+                > _ta.loc[(_coh, 'v2_to_x'), 'median_deg']))
+
+# The DLBS medians are the misalignment terms the shortfall decomposition uses,
+# so the two tables have to agree or one of them is stale.
+check('alignment table agrees with the shortfall decomposition, anat_x',
+      float(_sd.loc['anat_x', 'misalign_deg']),
+      float(_ta.loc[('DLBS', 'v2_to_x'), 'median_deg']), tol=3e-3)
+check('alignment table agrees with the shortfall decomposition, cross',
+      float(_sd.loc['cross', 'misalign_deg']),
+      float(_ta.loc[('DLBS', 'v2_to_cross'), 'median_deg']), tol=3e-3)
+
+_tg = ' '.join(TEX.split())
+check('the mechanism is stated, not just the numbers', 1.0,
+      float('leaves $D_{xx}$ unchanged in both regions' in _tg))
+check('existence of a shared axis is not confused with alignment', 1.0,
+      float('determined but not aligned' in _tg))
+check('the roll-yaw symmetry is explained', 1.0,
+      float('exchanging the two scanner axes exchanges the two regions' in _tg))
+check('the section disclaims the perivascular premise', 1.0,
+      float('rather than from any perivascular premise' in _tg))
+
 print(f"{'':4s} {'check':<52s} {'claimed':>10s} {'actual':>10s}")
 nfail = 0
 for ok, label, claimed, actual in results:
