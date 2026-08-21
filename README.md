@@ -15,12 +15,17 @@ you can join the chain depends on what data you have.
 
 - **30 scripts read imaging data.** They need the cohorts below, FSL, and the
   processed sessions on disk.
-- **36 scripts read a cached CSV that an earlier script wrote.** They fail with a
+- **39 scripts read a cached CSV that an earlier script wrote.** They fail with a
   `FileNotFoundError` in a fresh clone until you have run the upstream script
   that produces their input. That is expected, not a fault.
 - **24 need neither**, and run immediately. `scripts/sorting_bias_floor.py` is
   the clearest example: it simulates the acquisition and reproduces the
   eigenvalue-sorting noise floor quoted in the paper, with no data at all.
+
+`scripts/tract_orthogonality.py` sits across the boundary. Its first half is
+simulation and always runs. Its second half reads the measured-axis tables and
+says so and skips if they are absent, so a fresh clone still reproduces the
+rotation-sensitivity table in Appendix A.
 
 Result files are not published. HCP-A derived values are restricted by the AABC
 Data Use Terms, and the final values for everything are in the manuscript.

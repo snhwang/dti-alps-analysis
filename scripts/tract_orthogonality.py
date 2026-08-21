@@ -112,13 +112,17 @@ def rotation_part():
 
 def alignment_part():
     rows = []
+    header = False
     print("\n\n   How far v2 sits from each candidate axis\n")
-    print(f"   {'cohort':8s} {'measure':14s} {'median':>8s} {'IQR':>18s} {'n':>7s}")
     for cohort, fname in COHORTS:
         path = HERE / fname
         if not path.exists():
             print(f"   {cohort}: {fname} not found, skipping")
             continue
+        if not header:
+            print(f"   {'cohort':8s} {'measure':14s} {'median':>8s} "
+                  f"{'IQR':>18s} {'n':>7s}")
+            header = True
         m = pd.read_csv(path)
         for col in ("v2_to_x", "v2_to_cross"):
             if col not in m.columns:
