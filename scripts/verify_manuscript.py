@@ -1664,6 +1664,33 @@ for _canon in ('Refined (cross product)', 'Anatomical axis', 'Per-voxel',
     check('canonical row label present: ' + _canon, 1.0,
           float(_canon in _rowlabs))
 
+# --- trigeminal positioning: Welch, not pooled ---
+# The table carried Welch confidence intervals with pooled p values. Levene
+# rejects equal variance for both quantities, so Welch is the right test, and
+# it gives the smaller p. These are recomputed from the CSV, not transcribed.
+_tp = pd.read_csv(HERE / 'tn_positioning_test.csv').set_index('axis')
+for _ax, _pw, _q, _lev in (('pitch', 0.0203, 0.0406, 0.0171),
+                           ('total', 0.0099, 0.0394, 0.0059)):
+    check(f'TN {_ax} Welch p', _pw, float(_tp.loc[_ax, 'p_welch']), tol=2e-2)
+    check(f'TN {_ax} BH q', _q, float(_tp.loc[_ax, 'q_welch_bh']), tol=2e-2)
+    check(f'TN {_ax} Levene rejects equal variance', 1.0,
+          float(_tp.loc[_ax, 'p_levene'] < 0.05))
+    check(f'TN {_ax} Welch beats pooled', 1.0,
+          float(_tp.loc[_ax, 'p_welch'] < _tp.loc[_ax, 'p_pooled']))
+_ta = pd.read_csv(HERE / 'tn_positioning_adjusted.csv')
+check('TN age- and sex-adjusted pitch effect', 1.266,
+      float(_ta.coefficient_deg.iloc[0]), tol=2e-2)
+check('TN adjusted contrast is not significant', 1.0,
+      float(_ta.p.iloc[0] > 0.05))
+check('manuscript reports Welch for pitch', 1.0,
+      float('$d=0.33$, $p=0.020$' in _tg))
+check('manuscript reports Welch for total rotation', 1.0,
+      float('$d=0.36$, $p=0.010$' in _tg))
+check('manuscript justifies the test choice', 1.0,
+      float('Levene $p=0.017$' in _tg))
+check('manuscript discloses the adjusted null', 1.0,
+      float('no longer reaches significance at $p=0.090$' in _tg))
+
 print(f"{'':4s} {'check':<52s} {'claimed':>10s} {'actual':>10s}")
 nfail = 0
 for ok, label, claimed, actual in results:
