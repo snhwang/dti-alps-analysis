@@ -154,6 +154,10 @@ def main() -> None:
         ang = {k: [] for k in ("v2_to_x", "v2_to_cross", "cross_to_x",
                                "v2_proj_to_assoc", "v2_proj_to_cross",
                                "v2_assoc_to_cross")}
+        # regional eigenvalue means, so any normalization of the transverse
+        # anisotropy can be formed downstream without returning to the images
+        eig = {f"{e}_{r}": [] for e in ("l1", "l2", "l3")
+               for r in ("proj", "assoc")}
         for hemi, side, scr, slf in (("L", xw < 0, 26, 42), ("R", xw > 0, 25, 41)):
             mp_s = (sph == 1) & side & (fa >= FA_MIN)
             ma_s = (sph == 2) & side & (fa >= FA_MIN)
@@ -201,6 +205,9 @@ def main() -> None:
             # eigenvalues are unchanged by rotation.
             acc["pv_perp"].append(float((l2[mp_s].mean() + l2[ma_s].mean())
                                         / (l3[mp_s].mean() + l3[ma_s].mean())))
+            for _e, _v in (("l1", l1), ("l2", l2), ("l3", l3)):
+                eig[f"{_e}_proj"].append(float(_v[mp_s].mean()))
+                eig[f"{_e}_assoc"].append(float(_v[ma_s].mean()))
             acc["cross"].append(alps(p_cross))
             # Anatomical left-right, the same axis in both hemispheres, pulled
             # back from the template by the rotation of the subject-to-template
@@ -239,7 +246,7 @@ def main() -> None:
         if not acc["classic"]:
             continue
         rec = {"Subject_ID": r.Subject_ID, "Visit": r.Visit, "Age": r.Age}
-        for k, v in {**acc, **ang}.items():
+        for k, v in {**acc, **ang, **eig}.items():
             if v:
                 rec[k] = float(np.mean(v))
         rows.append(rec)

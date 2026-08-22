@@ -61,7 +61,7 @@ def main() -> None:
     args = ap.parse_args()
 
     src = pd.read_csv(DIFF / args.source).dropna(subset=[args.id_col])
-    fsl = winpath("C:/Users/Scott/fsl") if False else None
+    fsl = None
     ref_template = None
 
     rows = []
