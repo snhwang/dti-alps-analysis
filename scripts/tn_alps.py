@@ -280,6 +280,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--warp-only", action="store_true")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--followup", action="store_true",
+                    help="process the post-surgical sessions instead of "
+                         "the baselines, writing tn_alps_followup.csv")
     args = ap.parse_args()
 
     sessions = sorted(d for d in ROOT.iterdir() if d.is_dir())
@@ -293,7 +296,10 @@ def main() -> None:
         if not meta.exists():
             continue
         name = json.load(open(meta)).get("name", "")
-        if not name or name.endswith("fu"):
+        if not name:
+            continue
+        # Baselines are sub-###, post-surgical follow-ups are sub-###fu.
+        if name.endswith("fu") != args.followup:
             continue
         if warp_spheres(sd) is None:
             failed += 1
@@ -314,8 +320,10 @@ def main() -> None:
         return
 
     d = pd.DataFrame(rows).drop_duplicates(subset="BIDS_ID")
-    d.to_csv(HERE / "tn_alps.csv", index=False)
-    print(f"{len(d)} sessions with ALPS values -> tn_alps.csv")
+    d.to_csv(HERE / ("tn_alps_followup.csv" if args.followup
+                    else "tn_alps.csv"), index=False)
+    _out = "tn_alps_followup.csv" if args.followup else "tn_alps.csv"
+    print(f"{len(d)} sessions with ALPS values -> {_out}")
 
 
 if __name__ == "__main__":
