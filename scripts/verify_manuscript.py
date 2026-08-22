@@ -1610,6 +1610,11 @@ check('the delta/2 equality is called exact', 1.0,
 check('the floor is stated as a measurement', 1.0,
       float('median $14.6^{\\circ}$ apart' in _tg))
 
+check('the variant family is closed, not sampled', 1.0,
+      float('The same algebra closes the family' in _tg
+            and 'No third behavior is available' in _tg))
+check('closure names both angles and their opposite effects', 1.0,
+      float('a tilted numerator lifts the index above the ratio' in _tg))
 check('existence of a shared axis is not confused with alignment', 1.0,
       float('determined but not aligned' in _tg))
 check('the section disclaims the perivascular premise', 1.0,
