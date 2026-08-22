@@ -97,6 +97,8 @@ STEPS = [
      ["sorting_bias_floor.py"], {}, ["sorting_bias_floor.csv"], 1),
     ("variants", "shortfall decomposition against measured angles",
      ["shortfall_decomposition.py"], {}, ["shortfall_decomposition.csv"], 1),
+    ("patient", "trigeminal pose absorption against a permutation null",
+     ["tn_pose_permutation.py"], {}, ["tn_pose_permutation.csv"], 1),
     ("patient", "trigeminal group positioning, Welch with Levene and BH",
      ["tn_positioning_test.py"], {},
      ["tn_positioning_test.csv", "tn_positioning_adjusted.csv"], 1),

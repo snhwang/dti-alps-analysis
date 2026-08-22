@@ -1691,6 +1691,27 @@ check('manuscript justifies the test choice', 1.0,
 check('manuscript discloses the adjusted null', 1.0,
       float('no longer reaches significance at $p=0.090$' in _tg))
 
+# --- trigeminal pose absorption against its permutation null ---
+# The paper argues in Methods that adjusting for any covariate can shrink a
+# coefficient, so the adjustment needs a null. That null was reported for
+# DLBS and HCP-A and not for the patient cohort. These check the missing one.
+_pp = pd.read_csv(HERE / 'tn_pose_permutation.csv').iloc[0]
+check('TN permutation reproduces the group coefficient', -0.219,
+      float(_pp.beta_unadjusted), tol=2e-2)
+check('TN permutation reproduces the pose-adjusted coefficient', -0.175,
+      float(_pp.beta_pose_adjusted), tol=2e-2)
+check('TN observed absorption', 20.2, float(_pp.absorbed_pct), tol=2e-2)
+check('TN null mean is near zero', 1.0,
+      float(abs(_pp.null_mean) < 1.0))
+check('TN observed exceeds the null maximum', 1.0,
+      float(_pp.absorbed_pct > _pp.null_max))
+check('TN permutation p below 0.0005', 1.0,
+      float(_pp.p_permutation <= 0.0005))
+check('manuscript reports the trigeminal permutation', 1.0,
+      float(r'against an observed $20.2\%$ ($p<0.0005$)' in _tg))
+check('manuscript notes it is over and above age and sex', 1.0,
+      float('over and above age and sex' in _tg))
+
 print(f"{'':4s} {'check':<52s} {'claimed':>10s} {'actual':>10s}")
 nfail = 0
 for ok, label, claimed, actual in results:
