@@ -1638,6 +1638,32 @@ check('existence of a shared axis is not confused with alignment', 1.0,
 check('the section disclaims the perivascular premise', 1.0,
       float('rather than from any perivascular premise' in _tg))
 
+# The region-size table reports the cross-product index, which Table 1 calls
+# "Refined (cross product)". A bare "Refined" there invites matching its 0.518
+# to Table 1's measured-axis row, which carries the same value because every
+# corrected variant lands near 0.517 in DLBS.
+check('region-size row names its variant as Table 1 does', 1.0,
+      float(r'Refined (cross product) ICC, $149$ participants' in TEX))
+
+# --- variant naming: one spelling per variant, in table row labels ---
+# Prose is free to say 'regional measured axis' where it contrasts with
+# voxelwise. A row label is different: it is what a reader matches a number
+# against, so a second spelling sends the number to the wrong Table 1 row.
+_rowlabs = set()
+for _line in TEX.split(chr(10)):
+    _s = _line.strip()
+    if chr(92) * 2 in _s and '&' in _s:
+        _lab = ' '.join(_s.split('&')[0].split())
+        if _lab and not _lab.startswith(chr(92) + 'textbf'):
+            _rowlabs.add(_lab)
+for _dep in ('Cross product', 'Anatomical-$x$', 'Per-voxel variant',
+             'Regional measured axis', 'Classic ALPS'):
+    check('retired row label absent: ' + _dep, 0.0, float(_dep in _rowlabs))
+for _canon in ('Refined (cross product)', 'Anatomical axis', 'Per-voxel',
+               'Measured axis', 'Classic'):
+    check('canonical row label present: ' + _canon, 1.0,
+          float(_canon in _rowlabs))
+
 print(f"{'':4s} {'check':<52s} {'claimed':>10s} {'actual':>10s}")
 nfail = 0
 for ok, label, claimed, actual in results:
