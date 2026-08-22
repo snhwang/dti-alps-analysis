@@ -1074,15 +1074,18 @@ check("bound, equality condition and rate all retained", 1.0,
       float("le\\lambda_2" in TEX and "ge\\lambda_3" in TEX
             and "O(\\alpha^4)" in TEX))
 check("equality ruled out on invariance grounds, before any data", 1.0,
-      float("cannot always be equal" in " ".join(TEX.split())
-            and "so rotation leaves it unchanged" in " ".join(TEX.split())))
+      float("cannot change with rotation" in " ".join(TEX.split())
+            and "falls below it at second order" in " ".join(TEX.split())))
 check("both conditions for the bound are stated up front", 1.0,
-      float("two conditions govern the approach" in " ".join(TEX.split())
+      float("Two conditions govern how closely the index approaches"
+            in " ".join(TEX.split())
             and "not bounded by the ratio at all" in " ".join(TEX.split())))
 check("the invariance argument precedes the bound", 1.0,
-      float(TEX.index("cannot always be equal") < TEX.index("as a bound")))
+      float(TEX.index("cannot change with rotation")
+            < TEX.index("as that bound")))
 check("reduction stated in the Introduction", 1.0,
-      float(TEX.index("reduces to the ratio of the eigenvalues") < TEX.index("section{Methods")))
+      float(TEX.index("reduces to the ratio of the two perpendicular")
+            < TEX.index("section{Methods")))
 check("degenerate-perturbation mechanism given", 1.0,
       float("separate by $" in TEX and "4c^2" in TEX
             and "first order in the noise standard" in TEX))
@@ -1102,7 +1105,7 @@ check("sorting bias treated in the manuscript", 1.0,
 check("pooling stated as a weighted average, not a bare ratio", 1.0,
       float("a ratio of sums is" in TEX and "weighted average of the two regional" in TEX))
 check("our contribution scoped to the misaligned case", 1.0,
-      float("as a bound" in " ".join(TEX.split())
+      float("as that bound" in " ".join(TEX.split())
             or "is bounded by" in " ".join(TEX.split())))
 check("no claim that Schilling gave no derivation", 0.0,
       float("derivation not given there" in TEX
@@ -1610,6 +1613,21 @@ check('the delta/2 equality is called exact', 1.0,
 check('the floor is stated as a measurement', 1.0,
       float('median $14.6^{\\circ}$ apart' in _tg))
 
+# Three attenuations of the classic age coefficient appear, all correct, all
+# DLBS, on different samples under different adjustments: 45.0 on the
+# 156-participant pose sample, 35.1 on 507 sessions from 284 with the three
+# deviation angles, 34.6 on the 284-participant placement sample. Each has to
+# say which it is, or a reader comparing two figures sees a contradiction.
+check('the pose-adjustment table states its sample', 1.0,
+      float('Sample & $156$ participants, one visit each' in _tg))
+check('the pose figure names its adjustment and sample', 1.0,
+      float('After adjustment for head pose, in $156$ participants' in _tg))
+check('the pose figure disclaims the other attenuation', 1.0,
+      float('is a different adjustment on a different sample' in _tg))
+check('the angle-adjustment figure still names its sample', 1.0,
+      float('(DLBS, $n=507$ sessions from $284$ participants)' in _tg))
+check('the placement-sample figures are marked non-comparable', 1.0,
+      float('not comparable with pose adjustments elsewhere' in _tg))
 check('the variant family is closed, not sampled', 1.0,
       float('The same algebra closes the family' in _tg
             and 'No third behavior is available' in _tg))
