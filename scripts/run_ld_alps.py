@@ -389,8 +389,9 @@ def main() -> None:
         d.to_csv(final, index=False)
         # d is now the whole accumulated file, so count what this chunk added
         # rather than len(d), which would report the running total twice over.
-        n_written += len(frames_rows := sum(len(f) for f in frames))
-        print(f"   chunk {start // args.chunk}: +{frames_rows} rows "
+        added = sum(len(f) for f in frames)
+        n_written += added
+        print(f"   chunk {start // args.chunk}: +{added} rows "
               f"({n_written} this run, {len(d)} in {final.name})", flush=True)
         if not args.keep:
             shutil.rmtree(cdir, ignore_errors=True)
