@@ -56,7 +56,7 @@ import os
 import shutil
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -202,6 +202,18 @@ def prepare(sdir: Path, dest: Path, shell: int | None = None) -> bool:
     return True
 
 
+def _stage_one(job):
+    """Stage one session. Module level and plain-argument so it can be pickled
+    into a worker process; a closure or a namedtuple row cannot be."""
+    sdir, dest, shell, sid, visit = job
+    try:
+        if prepare(Path(sdir), Path(dest), shell):
+            return (sid, visit, Path(dest).name)
+    except Exception as e:                                      # noqa: BLE001
+        print(f"   stage failed {sid}/{visit}: {e!r}", flush=True)
+    return None
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cohort", choices=["dlbs", "hcpa", "tn"], default="dlbs")
@@ -286,17 +298,17 @@ def main() -> None:
         # is cheap to rebuild and is processed as a unit, so start it clean.
         shutil.rmtree(cdir, ignore_errors=True)
         cdir.mkdir(parents=True, exist_ok=True)
-        # Stage in parallel. zlib releases the GIL, so threads genuinely overlap
-        # the compression that dominates this step, and the reads come off one
-        # volume so more workers stop helping fairly quickly.
-        def _stage(r):
-            dest = cdir / f"alps_{r.Subject_ID}_{r.Visit}"
-            if prepare(OUT / r.DTI_Session_ID, dest, SHELL.get(args.cohort)):
-                return (str(r.Subject_ID), str(r.Visit), dest.name)
-            return None
-
-        with ThreadPoolExecutor(max_workers=args.stage_jobs) as ex:
-            staged = [x for x in ex.map(_stage, batch) if x is not None]
+        # Stage in separate processes, not threads. Both halves of this step are
+        # gzip through nibabel, which writes in small chunks and so contends on
+        # the GIL rather than releasing it usefully: a thread pool of eight
+        # measured 43 percent of one core on a 28-core machine, which is serial
+        # with overhead. Processes give the real thing.
+        jobs = [(str(OUT / r.DTI_Session_ID),
+                 str(cdir / f"alps_{r.Subject_ID}_{r.Visit}"),
+                 SHELL.get(args.cohort), str(r.Subject_ID), str(r.Visit))
+                for r in batch]
+        with ProcessPoolExecutor(max_workers=args.stage_jobs) as ex:
+            staged = [x for x in ex.map(_stage_one, jobs) if x is not None]
         if not staged:
             print(f"   chunk {start // args.chunk}: nothing staged, skipping",
                   flush=True)
