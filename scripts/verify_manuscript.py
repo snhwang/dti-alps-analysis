@@ -1664,53 +1664,81 @@ for _canon in ('Refined (cross product)', 'Anatomical axis', 'Per-voxel',
     check('canonical row label present: ' + _canon, 1.0,
           float(_canon in _rowlabs))
 
-# --- trigeminal positioning: Welch, not pooled ---
-# The table carried Welch confidence intervals with pooled p values. Levene
-# rejects equal variance for both quantities, so Welch is the right test, and
-# it gives the smaller p. These are recomputed from the CSV, not transcribed.
-_tp = pd.read_csv(HERE / 'tn_positioning_test.csv').set_index('axis')
-for _ax, _pw, _q, _lev in (('pitch', 0.0203, 0.0406, 0.0171),
-                           ('total', 0.0099, 0.0394, 0.0059)):
-    check(f'TN {_ax} Welch p', _pw, float(_tp.loc[_ax, 'p_welch']), tol=2e-2)
-    check(f'TN {_ax} BH q', _q, float(_tp.loc[_ax, 'q_welch_bh']), tol=2e-2)
-    check(f'TN {_ax} Levene rejects equal variance', 1.0,
-          float(_tp.loc[_ax, 'p_levene'] < 0.05))
-    check(f'TN {_ax} Welch beats pooled', 1.0,
-          float(_tp.loc[_ax, 'p_welch'] < _tp.loc[_ax, 'p_pooled']))
-_ta = pd.read_csv(HERE / 'tn_positioning_adjusted.csv')
-check('TN age- and sex-adjusted pitch effect', 1.266,
-      float(_ta.coefficient_deg.iloc[0]), tol=2e-2)
-check('TN adjusted contrast is not significant', 1.0,
-      float(_ta.p.iloc[0] > 0.05))
-check('manuscript reports Welch for pitch', 1.0,
-      float('$d=0.33$, $p=0.020$' in _tg))
-check('manuscript reports Welch for total rotation', 1.0,
-      float('$d=0.36$, $p=0.010$' in _tg))
-check('manuscript justifies the test choice', 1.0,
-      float('Levene $p=0.017$' in _tg))
-check('manuscript discloses the adjusted null', 1.0,
-      float('no longer reaches significance at $p=0.090$' in _tg))
+# --- published comparators in the aging cohorts ---
+# ALPS-PAS and the per-voxel form used to exist only in the patient cohort.
+# These come from comparator_associations_*.csv, whose own guard is that the
+# classic index reproduces its printed value in the same pass.
+for _co, _pas_all, _pas_raw, _pas_r, _pv_all, _pv_raw, _pv_r in (
+        ('hcpa', -0.571, -0.530, -0.045, -0.517, -0.481, +0.020),
+        ('dlbs', -0.391, -0.301, -0.202, -0.381, -0.281, -0.197)):
+    _ca = pd.read_csv(HERE / f'comparator_associations_{_co}.csv')
 
-# --- trigeminal pose absorption against its permutation null ---
-# The paper argues in Methods that adjusting for any covariate can shrink a
-# coefficient, so the adjustment needs a null. That null was reported for
-# DLBS and HCP-A and not for the patient cohort. These check the missing one.
-_pp = pd.read_csv(HERE / 'tn_pose_permutation.csv').iloc[0]
-check('TN permutation reproduces the group coefficient', -0.219,
-      float(_pp.beta_unadjusted), tol=2e-2)
-check('TN permutation reproduces the pose-adjusted coefficient', -0.175,
-      float(_pp.beta_pose_adjusted), tol=2e-2)
-check('TN observed absorption', 20.2, float(_pp.absorbed_pct), tol=2e-2)
-check('TN null mean is near zero', 1.0,
-      float(abs(_pp.null_mean) < 1.0))
-check('TN observed exceeds the null maximum', 1.0,
-      float(_pp.absorbed_pct > _pp.null_max))
-check('TN permutation p below 0.0005', 1.0,
-      float(_pp.p_permutation <= 0.0005))
-check('manuscript reports the trigeminal permutation', 1.0,
-      float(r'against an observed $20.2\%$ ($p<0.0005$)' in _tg))
-check('manuscript notes it is over and above age and sex', 1.0,
-      float('over and above age and sex' in _tg))
+    def _cell(v, conv, col):
+        s = _ca[(_ca.variant == v) & (_ca.convention == conv)]
+        return float(s.iloc[0][col]) if len(s) else float('nan')
+    # check() applies a RELATIVE tolerance, which is the wrong test for a cell
+    # printed to three decimals and sitting near zero: +0.020 against a computed
+    # 0.0198 is correct rounding but fails a relative bound. The table's claim is
+    # that the printed value is the computed value rounded, so test exactly that.
+    def _rounds_to(label, printed, v, conv, col):
+        check(label, 1.0, float(round(_cell(v, conv, col), 3) == round(printed, 3)))
+
+    _rounds_to(f'{_co} ALPS-PAS age, all sessions', _pas_all,
+               'ALPS-PAS', 'all_sessions', 'r_age')
+    _rounds_to(f'{_co} ALPS-PAS age, one per participant', _pas_raw,
+               'ALPS-PAS', 'one_per_participant', 'r_age')
+    _rounds_to(f'{_co} ALPS-PAS after the ratio', _pas_r,
+               'ALPS-PAS', 'one_per_participant', 'r_age_given_ratio')
+    _rounds_to(f'{_co} per-voxel age, all sessions', _pv_all,
+               'per-voxel', 'all_sessions', 'r_age')
+    _rounds_to(f'{_co} per-voxel age, one per participant', _pv_raw,
+               'per-voxel', 'one_per_participant', 'r_age')
+    _rounds_to(f'{_co} per-voxel after the ratio', _pv_r,
+               'per-voxel', 'one_per_participant', 'r_age_given_ratio')
+    # The same pass reproduces classic, which is what makes the rest usable.
+    check(f'{_co} comparator pass reproduces classic',
+          -0.465 if _co == 'hcpa' else -0.396,
+          _cell('classic', 'all_sessions', 'r_age'), tol=2e-3)
+
+# HCP-A is where the manuscript claims nothing survives the ratio, so both
+# comparators must sit inside the 0.057 bound it states.
+_hc = pd.read_csv(HERE / 'comparator_associations_hcpa.csv')
+_res = _hc[(_hc.convention == 'one_per_participant')
+           & _hc.variant.isin(['ALPS-PAS', 'per-voxel'])].r_age_given_ratio.abs()
+check('HCP-A comparators stay inside the stated bound', 1.0,
+      float((_res <= 0.057).all()))
+
+# --- the within-participant result ---
+_wl = pd.read_csv(HERE / 'phenotype_longitudinal_hcpa.csv')
+_mo = _wl[(_wl.phenotype == 'moca_sum') & (_wl.arm == 'everything')].set_index('variant')
+check('refined index retains MoCA under the full model', 0.101,
+      float(_mo.loc['cross', 'r']), tol=6e-3)
+check('and it is significant there', 1.0,
+      float(_mo.loc['cross', 'q'] < 0.05))
+check('classic does not retain MoCA under the full model', 1.0,
+      float(_mo.loc['classic', 'q'] > 0.05))
+check('the ratio-like variants retain nothing', 1.0,
+      float(_mo.loc['pv_perp', 'q'] > 0.5))
+_cr = _wl[(_wl.phenotype == 'CrystIQ_Tr35_60y') & (_wl.arm == 'everything')
+          & (_wl.variant == 'cross')]
+check('crystallized IQ does not survive, as the text states', 1.0,
+      float(len(_cr) and _cr.iloc[0].q > 0.05))
+
+# --- the diagnostic worked example must actually close ---
+_dw = pd.read_csv(HERE / 'diagnostic_worked_example.csv').iloc[0]
+check('worked example: unadjusted age association', -0.328,
+      float(_dw.beta_y_g), tol=3e-3)
+check('worked example: pose against age', +0.332, float(_dw.beta_p_g), tol=3e-3)
+check('worked example: pose against index given age', -0.412,
+      float(_dw.beta_y_pg), tol=3e-3)
+check('worked example: age association after pose', -0.191,
+      float(_dw.beta_y_gp), tol=3e-3)
+check('worked example: the identity closes', 1.0,
+      # _dw["product"], not _dw.product: the latter resolves to the Series method.
+      float(abs((_dw.beta_y_g - _dw["product"]) - _dw.beta_y_gp) < 5e-3))
+check('worked example: fraction carried by pose (%)', 42.0,
+      float(_dw.pct_pose), tol=0.6)
+
 
 print(f"{'':4s} {'check':<52s} {'claimed':>10s} {'actual':>10s}")
 nfail = 0

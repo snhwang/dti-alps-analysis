@@ -34,8 +34,18 @@ four-label ROI file, both of which are derived here. Note the label order is
 theirs and differs from ours, where 1 is projection and 2 association pooled
 across hemispheres.
 
-    python run_ld_alps.py --cohort dlbs --limit 20
-    python run_ld_alps.py --cohort dlbs
+Usage. DLBS is already done and its results are in the manuscript. For HCP-A:
+
+    python run_ld_alps.py --cohort hcpa --limit 3 --chunk 3 --keep   # smoke test
+    python run_ld_alps.py --cohort hcpa --chunk 40                   # full run
+
+The full run is long. It writes a shell-filtered copy of each session's DWI,
+which the single-shell path does not have to do, so budget hours rather than
+minutes and expect to restart it at least once. That is safe: results append
+after every chunk and sessions already present in ld_alps_<cohort>.csv are
+skipped, so re-invoking the same command resumes where it stopped. Staging is
+cleared per chunk, so an interrupted chunk cannot leave a truncated volume
+behind to be picked up as if it were complete.
 
 Writes ld_alps_<cohort>.csv.
 """
@@ -49,6 +59,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import nibabel as nib
 import pandas as pd
 
 import atomic_io  # noqa: F401  writes become atomic on import
@@ -63,17 +74,46 @@ WORK = winpath("Q:/ld_alps_work")   # same volume as the sessions, so hardlinks 
 # Their label order, mapped onto the ROI files we already warp into native space.
 LABEL_ORDER = (("R_SLF", 1), ("R_SCR", 2), ("L_SLF", 3), ("L_SCR", 4))
 
+# Which shell each cohort is analysed on. DLBS has one, b=1000, so nothing is
+# filtered. HCP-A has b=1500 and b=3000 and the paper fits b=1500, which is why
+# its tensors are written with a _b1500 suffix. LD-ALPS does not use the tensor:
+# it computes an apparent diffusion coefficient by interpolating the measured
+# signal across the acquired gradient directions. Handing it both shells would
+# therefore mix them into the ADC and give a number that is not comparable with
+# any other variant in the paper. There is no pre-filtered series on disk, so
+# the shell is selected here.
+SHELL = {"hcpa": 1500, "dlbs": None, "tn": None}
 
-def prepare(sdir: Path, dest: Path) -> bool:
-    """Lay out one session the way their loader expects. Returns False if incomplete."""
-    import nibabel as nib
 
+def prepare(sdir: Path, dest: Path, shell: int | None = None) -> bool:
+    """Lay out one session the way their loader expects. Returns False if incomplete.
+
+    DLBS is eddy-corrected by our pipeline, so it has dwi_eddy_corrected and the
+    rotated bvecs. HCP-A does not, because it is distributed already corrected by
+    the HCP minimal preprocessing pipeline and our pipeline consumed it as given.
+    Its inputs/dwi.nii.gz is therefore the corrected series and inputs/dwi.bvec
+    the gradients already rotated to match. Falling back to those is the correct
+    equivalent, not a degradation, but it is a substitution and is made
+    explicitly here rather than by silently accepting whatever is on disk.
+    """
     proc = sdir / "processed"
     atlas = proc / "atlas"
     eddy = proc / "dwi_eddy_corrected.nii.gz"
     bvec = proc / "dwi_eddy_rotated.bvec"
+    if not eddy.exists():
+        eddy = sdir / "inputs" / "dwi.nii.gz"
+        bvec = sdir / "inputs" / "dwi.bvec"
     bval = sdir / "inputs" / "dwi.bval"
+    # The principal eigenvector must come from the same shell as everything
+    # else. LD-ALPS uses V1 only to pick each region's direction, but a V1 from
+    # the b=3000 fit would select different voxels than every other variant in
+    # the paper does, so the suffixed tensors are used where they exist.
     evecs = proc / "tensor_eigenvectors.nii.gz"
+    if shell is not None:
+        suffixed = proc / f"tensor_eigenvectors_b{shell}.nii.gz"
+        if not suffixed.exists():
+            return False
+        evecs = suffixed
     sph_dir = atlas / "sphere_roi"
     if not all(p.exists() for p in (eddy, bvec, bval, evecs)):
         return False
@@ -81,17 +121,38 @@ def prepare(sdir: Path, dest: Path) -> bool:
         return False
 
     dest.mkdir(parents=True, exist_ok=True)
-    # Their loader opens these by name, so link or copy rather than pass paths.
-    for src, name in ((eddy, "eddy_corrected_data.nii.gz"),
-                      (bvec, "eddy_corrected_data.eddy_rotated_bvecs"),
-                      (bval, "bvals")):
-        tgt = dest / name
-        if tgt.exists():
-            continue
-        try:
-            os.link(src, tgt)
-        except OSError:
-            shutil.copyfile(src, tgt)
+    if shell is None:
+        # Single-shell cohort: their loader opens these by name, so link or copy
+        # rather than pass paths. Linking keeps this nearly free.
+        for src, name in ((eddy, "eddy_corrected_data.nii.gz"),
+                          (bvec, "eddy_corrected_data.eddy_rotated_bvecs"),
+                          (bval, "bvals")):
+            tgt = dest / name
+            if tgt.exists():
+                continue
+            try:
+                os.link(src, tgt)
+            except OSError:
+                shutil.copyfile(src, tgt)
+    else:
+        # Multi-shell: keep b=0 and the analysed shell, drop the rest. The
+        # filtered series has to be written out, so this costs real time and
+        # disk where the single-shell path costs neither.
+        tgt = dest / "eddy_corrected_data.nii.gz"
+        if not tgt.exists():
+            b = np.loadtxt(bval).ravel()
+            keep = (b < 100) | (np.abs(b - shell) <= 100)
+            if keep.sum() < 10:
+                return False
+            img = nib.load(str(eddy))
+            data = np.asanyarray(img.dataobj)[..., keep]
+            nib.save(nib.Nifti1Image(data, img.affine, img.header), str(tgt))
+            np.savetxt(dest / "bvals", b[keep][None, :], fmt="%g")
+            v = np.loadtxt(bvec)
+            if v.shape[0] != 3:
+                v = v.T
+            np.savetxt(dest / "eddy_corrected_data.eddy_rotated_bvecs",
+                       v[:, keep], fmt="%.6f")
 
     v1_path = dest / "dti_V1.nii.gz"
     if not v1_path.exists():
@@ -113,50 +174,99 @@ def prepare(sdir: Path, dest: Path) -> bool:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--cohort", choices=["dlbs", "tn"], default="dlbs")
+    ap.add_argument("--cohort", choices=["dlbs", "hcpa", "tn"], default="dlbs")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--chunk", type=int, default=40,
+                    help="sessions per batch; results append after each batch")
     ap.add_argument("--keep", action="store_true", help="leave the staged inputs on disk")
     args = ap.parse_args()
 
     if not VENDORED.exists():
         raise SystemExit(f"vendored LD-ALPS not found at {VENDORED}")
 
-    src = pd.read_csv(DIFF / "DLBS" / "dlbs_alps_spheres_5mm.csv")
-    src = src[src.status == "ok"].copy()
-    src["Visit"] = src["Session"]
+    # The cohort flag used to select only the output directory: the session list
+    # was read from DLBS whatever was passed, so --cohort tn silently ran DLBS
+    # sessions into a tn folder. Each cohort now selects its own session table.
+    if args.cohort == "hcpa":
+        src = pd.read_csv(DIFF / "HCP" / "hcpa_alps_spheres_5mm.csv")
+        src = src[src.status == "ok"].copy()
+        src["Visit"] = src["Visit"].astype(str)
+    else:
+        src = pd.read_csv(DIFF / "DLBS" / "dlbs_alps_spheres_5mm.csv")
+        src = src[src.status == "ok"].copy()
+        src["Visit"] = src["Session"]
     if args.limit:
         src = src.head(args.limit)
 
     base = WORK / args.cohort
     base.mkdir(parents=True, exist_ok=True)
-    staged = []
-    for r in src.itertuples():
-        dest = base / f"alps_{r.Subject_ID}_{r.Visit}"
-        if prepare(OUT / r.DTI_Session_ID, dest):
-            staged.append((r.Subject_ID, r.Visit, dest.name))
-    print(f"staged {len(staged)} of {len(src)} sessions in {base}", flush=True)
-    if not staged:
-        raise SystemExit("nothing staged; check that eddy outputs and spheres exist")
+    final = HERE / f"ld_alps_{args.cohort}.csv"
 
-    out_csv = base / "ld_alps_raw.csv"
-    cmd = [sys.executable, str(VENDORED), str(base), "--subject-prefix", "alps_",
-           "--out", str(out_csv)]
-    print(" ".join(cmd), flush=True)
-    r = subprocess.run(cmd, capture_output=True, text=True)
-    if r.returncode != 0:
-        print(r.stdout[-3000:])
-        print(r.stderr[-3000:])
-        raise SystemExit(f"LD-ALPS exited {r.returncode}")
-    print(r.stdout[-1500:])
+    # Accumulate in chunks and append after each one. A run over a few thousand
+    # sessions will be interrupted sooner or later, and staging everything then
+    # writing once at the end means an interruption costs the whole run. Sessions
+    # already present in the output are skipped, so re-invoking resumes.
+    done = set()
+    if final.exists():
+        prev = pd.read_csv(final)
+        if {"Subject_ID", "Visit"} <= set(prev.columns):
+            done = {(str(a), str(b)) for a, b in zip(prev.Subject_ID, prev.Visit)}
+        print(f"resuming: {len(done)} sessions already in {final.name}")
 
-    d = pd.read_csv(out_csv)
-    key = pd.DataFrame(staged, columns=["Subject_ID", "Visit", "subject"])
-    idc = next((c for c in d.columns if c.lower() in ("subject", "subject_id", "id")), None)
-    if idc is not None:
-        d = d.rename(columns={idc: "subject"}).merge(key, on="subject", how="left")
-    d.to_csv(HERE / f"ld_alps_{args.cohort}.csv", index=False)
-    print(f"\n{len(d)} sessions -> ld_alps_{args.cohort}.csv")
-    print("columns:", list(d.columns))
+    todo = [r for r in src.itertuples()
+            if (str(r.Subject_ID), str(r.Visit)) not in done]
+    print(f"{len(todo)} sessions to run, in chunks of {args.chunk}", flush=True)
+
+    n_written = 0
+    for start in range(0, len(todo), args.chunk):
+        batch = todo[start:start + args.chunk]
+        cdir = base / f"chunk_{start // args.chunk:04d}"
+        # Clear before staging. An interrupted run leaves a half-written
+        # eddy_corrected_data.nii.gz behind, and the "skip if it exists" guards
+        # below would accept the truncated file and hand it to LD-ALPS. A chunk
+        # is cheap to rebuild and is processed as a unit, so start it clean.
+        shutil.rmtree(cdir, ignore_errors=True)
+        cdir.mkdir(parents=True, exist_ok=True)
+        staged = []
+        for r in batch:
+            dest = cdir / f"alps_{r.Subject_ID}_{r.Visit}"
+            if prepare(OUT / r.DTI_Session_ID, dest, SHELL.get(args.cohort)):
+                staged.append((str(r.Subject_ID), str(r.Visit), dest.name))
+        if not staged:
+            print(f"   chunk {start // args.chunk}: nothing staged, skipping",
+                  flush=True)
+            shutil.rmtree(cdir, ignore_errors=True)
+            continue
+
+        raw = cdir / "ld_alps_raw.csv"
+        proc = subprocess.run(
+            [sys.executable, str(VENDORED), str(cdir), "--subject-prefix", "alps_",
+             "--out", str(raw)], capture_output=True, text=True)
+        if proc.returncode != 0 or not raw.exists():
+            print(f"   chunk {start // args.chunk} FAILED (exit {proc.returncode})")
+            print(proc.stderr[-800:])
+            if not args.keep:
+                shutil.rmtree(cdir, ignore_errors=True)
+            continue
+
+        d = pd.read_csv(raw)
+        key = pd.DataFrame(staged, columns=["Subject_ID", "Visit", "subject"])
+        idc = next((c for c in d.columns
+                    if c.lower() in ("subject", "subject_id", "id")), None)
+        if idc is not None:
+            d = d.rename(columns={idc: "subject"}).merge(key, on="subject", how="left")
+        # Append rather than overwrite, so earlier chunks survive a later failure.
+        d.to_csv(final, mode="a", header=not final.exists(), index=False)
+        n_written += len(d)
+        print(f"   chunk {start // args.chunk}: +{len(d)} rows "
+              f"({n_written} this run) -> {final.name}", flush=True)
+        if not args.keep:
+            shutil.rmtree(cdir, ignore_errors=True)
+
+    if final.exists():
+        allr = pd.read_csv(final)
+        print(f"\n{len(allr)} sessions total in {final.name}")
+        print("columns:", list(allr.columns))
     if not args.keep:
         shutil.rmtree(base, ignore_errors=True)
 

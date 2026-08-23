@@ -24,6 +24,11 @@ matplotlib>=3.7
 # and the covariate models.
 statsmodels>=0.14
 
+# Required only by the vendored reference LD-ALPS implementation, which uses
+# DBSCAN to reject outlier voxels. Nothing else here imports it, so skip it
+# unless you are running run_ld_alps.py.
+scikit-learn>=1.3
+
 # Not on PyPI, and not needed for most of the scripts:
 #
 #   axis_error_sensitivity.py imports dti_alps_refined and its test helpers.

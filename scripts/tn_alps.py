@@ -115,8 +115,14 @@ def alps_variants(sdir: Path):
     try:
         limg = nib.load(str(lab_p)); lab = limg.get_fdata().astype(int)
         sph = nib.load(str(sph_p)).get_fdata().astype(int)
-        ev = nib.load(str(proc / "tensor_eigenvalues.nii.gz")).get_fdata()
-        vc = nib.load(str(proc / "tensor_eigenvectors.nii.gz")).get_fdata()
+        # HCP-A carries two shells and the paper fits b=1500 only, so its
+        # tensors are written with a suffix. measured_pvs_axis reads the same
+        # environment variable; honoring it here lets this function serve the
+        # aging cohorts as well as the single-shell one it was written for.
+        # Empty by default, which is correct for any single-shell cohort.
+        shell = os.environ.get("ALPS_TENSOR_SUFFIX", "")
+        ev = nib.load(str(proc / f"tensor_eigenvalues{shell}.nii.gz")).get_fdata()
+        vc = nib.load(str(proc / f"tensor_eigenvectors{shell}.nii.gz")).get_fdata()
     except Exception:
         return None
     if lab.shape != sph.shape or lab.shape != ev.shape[:3]:
