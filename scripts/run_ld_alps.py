@@ -56,6 +56,7 @@ import os
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -64,6 +65,15 @@ import pandas as pd
 
 import atomic_io  # noqa: F401  writes become atomic on import
 from data_paths import winpath
+
+# Staging dominates the runtime, and almost all of it is gzip. Measured on
+# HCP-A: 38 s per session, of which about 30 s is writing the filtered series.
+# The vendored loader opens "eddy_corrected_data.nii.gz" by that exact name, so
+# the file has to stay gzipped and cannot simply be written uncompressed.
+# nibabel's compression level is a supported module-level knob, though, and
+# level 1 costs a little disk for a large fraction of that time. These files are
+# deleted at the end of their chunk, so the disk does not matter.
+nib.openers.Opener.default_compresslevel = 1
 
 HERE = Path(__file__).resolve().parent
 DIFF = HERE.parent.parent / "diffusion"
@@ -196,6 +206,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cohort", choices=["dlbs", "hcpa", "tn"], default="dlbs")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--stage-jobs", type=int, default=8, dest="stage_jobs",
+                    help="parallel workers for staging, the gzip-bound step")
     ap.add_argument("--chunk", type=int, default=40,
                     help="sessions per batch; results append after each batch")
     ap.add_argument("--keep", action="store_true", help="leave the staged inputs on disk")
@@ -211,6 +223,33 @@ def main() -> None:
         src = pd.read_csv(DIFF / "HCP" / "hcpa_alps_spheres_5mm.csv")
         src = src[src.status == "ok"].copy()
         src["Visit"] = src["Visit"].astype(str)
+        src["Subject_ID"] = src.Subject_ID.astype(str)
+        # 2742 sessions pass sphere placement but only 1706 carry b=1500
+        # tensors, and those 1706 are the sample every other variant is
+        # reported on. Iterating all of them would stage and then discard a
+        # third of the run. The test is the same one prepare() applies, made on
+        # the filesystem rather than against a side table, so it holds from a
+        # clone of either repository.
+        # 2742 sessions pass sphere placement, 2226 carry b=1500 tensors, and
+        # 1706 are in the published sample every other variant is reported on.
+        # The difference between the last two is sessions where the variant
+        # computation itself failed, which no test on the filesystem recovers,
+        # so the published table is the authority. Running a different sample
+        # silently would make LD-ALPS incomparable with the rest of the paper,
+        # so its absence is an error rather than a skipped filter.
+        pub = HERE / "measured_pvs_axis_hcpa_b1500_all.csv"
+        if not pub.exists():
+            raise SystemExit(
+                f"{pub.name} is required to select the published HCP-A sample "
+                f"and is not beside this script. It is a derived HCP-A file and "
+                f"cannot be redistributed under the AABC terms, so copy it in "
+                f"from the analysis directory that produced it.")
+        p = pd.read_csv(pub)
+        keep = {(str(a), str(b)) for a, b in zip(p.Subject_ID, p.Visit)}
+        before = len(src)
+        src = src[[(a, b) in keep for a, b in zip(src.Subject_ID, src.Visit)]]
+        print(f"restricted to the published b=1500 sample: "
+              f"{len(src)} of {before} sessions", flush=True)
     else:
         src = pd.read_csv(DIFF / "DLBS" / "dlbs_alps_spheres_5mm.csv")
         src = src[src.status == "ok"].copy()
@@ -247,11 +286,17 @@ def main() -> None:
         # is cheap to rebuild and is processed as a unit, so start it clean.
         shutil.rmtree(cdir, ignore_errors=True)
         cdir.mkdir(parents=True, exist_ok=True)
-        staged = []
-        for r in batch:
+        # Stage in parallel. zlib releases the GIL, so threads genuinely overlap
+        # the compression that dominates this step, and the reads come off one
+        # volume so more workers stop helping fairly quickly.
+        def _stage(r):
             dest = cdir / f"alps_{r.Subject_ID}_{r.Visit}"
             if prepare(OUT / r.DTI_Session_ID, dest, SHELL.get(args.cohort)):
-                staged.append((str(r.Subject_ID), str(r.Visit), dest.name))
+                return (str(r.Subject_ID), str(r.Visit), dest.name)
+            return None
+
+        with ThreadPoolExecutor(max_workers=args.stage_jobs) as ex:
+            staged = [x for x in ex.map(_stage, batch) if x is not None]
         if not staged:
             print(f"   chunk {start // args.chunk}: nothing staged, skipping",
                   flush=True)
