@@ -84,6 +84,16 @@ LABEL_ORDER = (("R_SLF", 1), ("R_SCR", 2), ("L_SLF", 3), ("L_SCR", 4))
 # the shell is selected here.
 SHELL = {"hcpa": 1500, "dlbs": None, "tn": None}
 
+# A volume at or below this b is a b0. HCP-A labels its b0 volumes b=5 rather
+# than b=0, which is common practice, but the vendored code identifies them with
+# an exact `bvals == 0` test and raises "bvals must contain both 0 and nonzero
+# entries" when none matches. The b0 labels are therefore normalized to 0 on the
+# way in. Only the labels: the diffusion-weighted b values are left exactly as
+# acquired, because compute_adc_volume uses each volume's own b in the ADC, so
+# the 1490 to 1510 spread of a nominal 1500 shell is meaningful and rounding it
+# would change every ADC.
+B0_MAX = 100.0
+
 
 def prepare(sdir: Path, dest: Path, shell: int | None = None) -> bool:
     """Lay out one session the way their loader expects. Returns False if incomplete.
@@ -124,11 +134,18 @@ def prepare(sdir: Path, dest: Path, shell: int | None = None) -> bool:
     if shell is None:
         # Single-shell cohort: their loader opens these by name, so link or copy
         # rather than pass paths. Linking keeps this nearly free.
+        b_all = np.loadtxt(bval).ravel()
+        needs_b0_fix = not (b_all == 0).any()
         for src, name in ((eddy, "eddy_corrected_data.nii.gz"),
                           (bvec, "eddy_corrected_data.eddy_rotated_bvecs"),
                           (bval, "bvals")):
             tgt = dest / name
             if tgt.exists():
+                continue
+            if name == "bvals" and needs_b0_fix:
+                # No exact zeros, so write a normalized copy instead of linking.
+                b_fixed = np.where(b_all <= B0_MAX, 0.0, b_all)
+                np.savetxt(tgt, b_fixed[None, :], fmt="%g")
                 continue
             try:
                 os.link(src, tgt)
@@ -141,13 +158,16 @@ def prepare(sdir: Path, dest: Path, shell: int | None = None) -> bool:
         tgt = dest / "eddy_corrected_data.nii.gz"
         if not tgt.exists():
             b = np.loadtxt(bval).ravel()
-            keep = (b < 100) | (np.abs(b - shell) <= 100)
-            if keep.sum() < 10:
+            is_b0 = b <= B0_MAX
+            keep = is_b0 | (np.abs(b - shell) <= 100)
+            if keep.sum() < 10 or not is_b0.any():
                 return False
             img = nib.load(str(eddy))
             data = np.asanyarray(img.dataobj)[..., keep]
             nib.save(nib.Nifti1Image(data, img.affine, img.header), str(tgt))
-            np.savetxt(dest / "bvals", b[keep][None, :], fmt="%g")
+            # b0 labels to exactly 0; weighted volumes keep their acquired b.
+            b_out = np.where(is_b0, 0.0, b)[keep]
+            np.savetxt(dest / "bvals", b_out[None, :], fmt="%g")
             v = np.loadtxt(bvec)
             if v.shape[0] != 3:
                 v = v.T
