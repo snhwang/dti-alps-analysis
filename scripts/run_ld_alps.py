@@ -214,10 +214,38 @@ def _stage_one(job):
     return None
 
 
+def _compute_part(job):
+    """Run the vendored script over one part directory and return its rows.
+
+    Returns None when the part is empty or the run produced nothing, so a single
+    bad part costs its own sessions rather than the whole chunk.
+    """
+    pdir, vendored, exe = job
+    p = Path(pdir)
+    if not any(p.glob("alps_*")):
+        return None
+    raw = p / "ld_alps_raw.csv"
+    proc = subprocess.run([exe, vendored, str(p), "--subject-prefix", "alps_",
+                           "--out", str(raw)], capture_output=True, text=True)
+    if not raw.exists():
+        print(f"   part {p.name} produced nothing (exit {proc.returncode})",
+              flush=True)
+        if proc.stderr:
+            print("   " + proc.stderr.strip().splitlines()[-1][:200], flush=True)
+        return None
+    try:
+        return pd.read_csv(raw)
+    except Exception:                                           # noqa: BLE001
+        return None
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cohort", choices=["dlbs", "hcpa", "tn"], default="dlbs")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--compute-jobs", type=int, default=12, dest="compute_jobs",
+                    help="parallel vendored processes per chunk; each gets its "
+                         "own part directory of the chunk's sessions")
     ap.add_argument("--stage-jobs", type=int, default=8, dest="stage_jobs",
                     help="parallel workers for staging, the gzip-bound step")
     ap.add_argument("--chunk", type=int, default=40,
@@ -303,10 +331,20 @@ def main() -> None:
         # the GIL rather than releasing it usefully: a thread pool of eight
         # measured 43 percent of one core on a 28-core machine, which is serial
         # with overhead. Processes give the real thing.
+        # Sessions are staged into part directories rather than one flat chunk,
+        # so the compute step can run one vendored process per part. The
+        # vendored script walks its directory's subjects in sequence, and
+        # measured over a chunk of 40 that is about 37 s each, roughly 90
+        # percent of the chunk's runtime. Subjects are independent of one
+        # another there, so splitting the directory is enough to parallelize it.
+        nparts = max(1, min(args.compute_jobs, len(batch)))
+        parts = [cdir / f"part_{i:02d}" for i in range(nparts)]
+        for p in parts:
+            p.mkdir(parents=True, exist_ok=True)
         jobs = [(str(OUT / r.DTI_Session_ID),
-                 str(cdir / f"alps_{r.Subject_ID}_{r.Visit}"),
+                 str(parts[i % nparts] / f"alps_{r.Subject_ID}_{r.Visit}"),
                  SHELL.get(args.cohort), str(r.Subject_ID), str(r.Visit))
-                for r in batch]
+                for i, r in enumerate(batch)]
         with ProcessPoolExecutor(max_workers=args.stage_jobs) as ex:
             staged = [x for x in ex.map(_stage_one, jobs) if x is not None]
         if not staged:
@@ -315,28 +353,45 @@ def main() -> None:
             shutil.rmtree(cdir, ignore_errors=True)
             continue
 
-        raw = cdir / "ld_alps_raw.csv"
-        proc = subprocess.run(
-            [sys.executable, str(VENDORED), str(cdir), "--subject-prefix", "alps_",
-             "--out", str(raw)], capture_output=True, text=True)
-        if proc.returncode != 0 or not raw.exists():
-            print(f"   chunk {start // args.chunk} FAILED (exit {proc.returncode})")
-            print(proc.stderr[-800:])
+        with ProcessPoolExecutor(max_workers=nparts) as ex:
+            results = list(ex.map(_compute_part,
+                                  [(str(p), str(VENDORED), sys.executable)
+                                   for p in parts]))
+        frames = [f for f in results if f is not None]
+        if not frames:
+            print(f"   chunk {start // args.chunk} FAILED: no part produced output",
+                  flush=True)
             if not args.keep:
                 shutil.rmtree(cdir, ignore_errors=True)
             continue
-
-        d = pd.read_csv(raw)
+        if len(frames) < len([p for p in parts if any(p.glob('alps_*'))]):
+            print(f"   chunk {start // args.chunk}: warning, "
+                  f"{len(frames)} of {nparts} parts produced output", flush=True)
+        d = pd.concat(frames, ignore_index=True)
         key = pd.DataFrame(staged, columns=["Subject_ID", "Visit", "subject"])
         idc = next((c for c in d.columns
                     if c.lower() in ("subject", "subject_id", "id")), None)
         if idc is not None:
             d = d.rename(columns={idc: "subject"}).merge(key, on="subject", how="left")
-        # Append rather than overwrite, so earlier chunks survive a later failure.
-        d.to_csv(final, mode="a", header=not final.exists(), index=False)
-        n_written += len(d)
-        print(f"   chunk {start // args.chunk}: +{len(d)} rows "
-              f"({n_written} this run) -> {final.name}", flush=True)
+        # Read, concatenate, write the whole file. Not mode="a": atomic_io
+        # replaces to_csv with a write-to-temp-and-rename, which ignores the
+        # append mode and so silently rewrote the file with only the newest
+        # chunk, destroying every earlier one and dropping the header. Rewriting
+        # the whole file is correct under an atomic writer and costs nothing at
+        # this size.
+        if final.exists():
+            try:
+                d = pd.concat([pd.read_csv(final), d], ignore_index=True)
+            except Exception as e:                              # noqa: BLE001
+                print(f"   could not read {final.name} to append to: {e!r}",
+                      flush=True)
+                raise
+        d.to_csv(final, index=False)
+        # d is now the whole accumulated file, so count what this chunk added
+        # rather than len(d), which would report the running total twice over.
+        n_written += len(frames_rows := sum(len(f) for f in frames))
+        print(f"   chunk {start // args.chunk}: +{frames_rows} rows "
+              f"({n_written} this run, {len(d)} in {final.name})", flush=True)
         if not args.keep:
             shutil.rmtree(cdir, ignore_errors=True)
 
