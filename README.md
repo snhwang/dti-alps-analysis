@@ -78,6 +78,37 @@ the others append `_auto` or `_spheres`.
 `scripts/manual_vs_atlas_icc.py` computes both region sets on one estimator so
 the two are directly comparable.
 
+## Three things that fail quietly
+
+Each of these produced a wrong answer that looked like a clean result, so they
+are worth knowing before you trust anything you run.
+
+**FSL through WSL has no `FSLDIR`.** On Windows the FSL commands run via
+`wsl bash -lc`, and that non-interactive login shell does not export `FSLDIR`.
+A `flirt` given an unresolvable `-ref` **exits zero and writes no matrix**, so
+the failure surfaces later as an empty result rather than an error. Resolve
+template paths at runtime and raise when they are missing;
+`scripts/ds001907_t1_pose.py` shows the pattern.
+
+**HCP-A is two shells and the paper uses one.** It carries b=1500 and b=3000,
+the tensors are fitted on b=1500 and written with a suffix, and the published
+sample is the 1706 sessions that have them, not the 2742 that passed region
+placement. Select the shell with the environment variable, and the sample from
+the published table:
+
+    ALPS_TENSOR_SUFFIX=_b1500 python scripts/measured_pvs_axis.py --cohort hcpa
+
+`alps_variants` in `scripts/tn_alps.py` honours the same variable. Getting
+either wrong is invisible in the output, which is why every script that
+recomputes a published quantity also recomputes the classic index in the same
+pass and checks it reproduces its printed value before the new numbers are
+used.
+
+**`atomic_io` breaks `to_csv(mode="a")`.** Importing it replaces `to_csv` with a
+write-to-temp-and-rename, which is right in general and silently ignores append
+mode: each "append" rewrites the file with only the new rows and drops the
+header. Accumulate by read, concatenate, write instead.
+
 ## Running
 
 Each script is self-contained and documented at the top of the file, which is the
