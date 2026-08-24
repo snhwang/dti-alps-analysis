@@ -64,6 +64,11 @@ ROOT = Path(winpath("M:/ds005713-derivatives/dti_output/ds005713_preproc"))
 PARTICIPANTS = Path(winpath("M:/ds005713-download/participants_v2.0.1.tsv"))
 ROI_SRC = winpath("C:/tmp/alps_roi/old_ROIs_JHU_ALPS_5mm_radius")
 SLAB_MM, FA_MIN = 8.0, 0.2
+# Radius of the native-space sphere drawn at each warped region's centre, in
+# millimetres, matching the default in measured_pvs_axis. Zero restores the
+# warped mask of the first submission. Both files read the same variable, so
+# the placement rule cannot drift between the variants and the comparators.
+SPHERE_MM = float(os.environ.get("ALPS_SPHERE_MM", "5"))
 BANDS = (8.0, 12.0, 16.0)   # 8 mm was tuned on 1.5 mm data; 2 mm needs more
 VARIANTS = (["classic", "cross", "v2_sphere", "ALPS-PAS", "per-voxel", "pv_perp", "anat_x"]
             + [f"{k}_b{int(b)}" for b in BANDS for k in ("cross", "v2_slab")]
@@ -142,7 +147,23 @@ def alps_variants(sdir: Path):
     ii, jj, kk = np.indices(lab.shape)
     Af = limg.affine
     xw = Af[0, 0] * ii + Af[0, 1] * jj + Af[0, 2] * kk + Af[0, 3]
+    yw = Af[1, 0] * ii + Af[1, 1] * jj + Af[1, 2] * kk + Af[1, 3]
     zw = Af[2, 0] * ii + Af[2, 1] * jj + Af[2, 2] * kk + Af[2, 3]
+
+    def resphere(m, radius):
+        """Redraw a warped region as a true sphere at its own centre.
+
+        The same rule measured_pvs_axis applies to the variants, repeated here
+        because ALPS-PAS and the per-voxel index appear beside them in the same
+        tables. If the comparators kept the warped masks while the variants did
+        not, those tables would be comparing region placement rather than the
+        methods they are meant to compare.
+        """
+        if radius <= 0 or not m.any():
+            return m
+        cx, cy, cz = xw[m].mean(), yw[m].mean(), zw[m].mean()
+        d2 = (xw - cx) ** 2 + (yw - cy) ** 2 + (zw - cz) ** 2
+        return d2 <= radius ** 2
 
     def evec(m, w):
         V = vc[m]; o = srt[m]
@@ -151,8 +172,8 @@ def alps_variants(sdir: Path):
 
     acc = {k: {} for k in VARIANTS}
     for hemi, side, scr, slf in (("L", xw < 0, 26, 42), ("R", xw > 0, 25, 41)):
-        mp = (sph == 1) & side & (fa >= FA_MIN)
-        ma = (sph == 2) & side & (fa >= FA_MIN)
+        mp = resphere((sph == 1) & side, SPHERE_MM) & (fa >= FA_MIN)
+        ma = resphere((sph == 2) & side, SPHERE_MM) & (fa >= FA_MIN)
         if mp.sum() < 4 or ma.sum() < 4:
             continue
         z0 = float(np.median(zw[sph > 0])) if (sph > 0).any() else 0.0

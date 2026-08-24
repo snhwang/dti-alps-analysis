@@ -85,6 +85,7 @@ def main() -> None:
         recs = recs[: args.limit]
     print(f"{args.cohort}: {len(recs)} sessions, {args.jobs} at a time\n")
 
+    outp = HERE / f"comparators_{args.cohort}.csv"
     done = []
     with ThreadPoolExecutor(max_workers=args.jobs) as ex:
         for i, r in enumerate(ex.map(one, recs), 1):
@@ -92,8 +93,10 @@ def main() -> None:
                 done.append(r)
             if i % 200 == 0:
                 print(f"   {i}/{len(recs)} ({len(done)} ok)", flush=True)
+                # Flushed as it goes, so an interrupted run keeps its work.
+                pd.DataFrame(done).to_csv(outp, index=False)
     d = pd.DataFrame(done)
-    d.to_csv(HERE / f"comparators_{args.cohort}.csv", index=False)
+    d.to_csv(outp, index=False)
     print(f"\n{len(d)} sessions computed")
 
     # Cross-check against the classic values already in the manuscript's source

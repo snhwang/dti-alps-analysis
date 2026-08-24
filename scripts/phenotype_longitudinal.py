@@ -21,8 +21,9 @@ alone. Within-person centered age is therefore partialled out of every test, and
 what is reported is the association net of shared drift.
 
 The radial anisotropy ratio is included alongside the variants, since the paper
-argues every variant is bounded by it and approaches it. It is
-(l2_proj + l2_assoc) / (l3_proj + l3_assoc), matching Section 2.7.
+argues every variant is bounded by it and approaches it. It is pv_perp, the
+mean lambda2 over the mean lambda3 within each hemisphere's two regions,
+averaged across hemispheres exactly as the variants are.
 
     python phenotype_longitudinal.py --cohort hcpa
     python phenotype_longitudinal.py --cohort dlbs
@@ -30,6 +31,7 @@ argues every variant is bounded by it and approaches it. It is
 from __future__ import annotations
 
 import argparse
+import os
 import re
 from pathlib import Path
 
@@ -72,12 +74,30 @@ def bh(p):
 
 
 def index_table(cohort: str) -> pd.DataFrame:
-    f = ("measured_pvs_axis_hcpa_b1500_all.csv" if cohort == "hcpa"
-         else "measured_pvs_axis_dlbs.csv")
+    # The canonical tables are the re-sphered ones, where every region is a
+    # true sphere of fixed radius drawn in native space at the warped centre.
+    # ALPS_WARPED_MASK reads the first submission's warped masks instead, so
+    # the placement rule can be varied without editing anything.
+    _wm = os.environ.get("ALPS_WARPED_MASK", "")
+    _sx = "_warpedmask" if _wm else ""
+    # HCP-A carries the _all suffix and DLBS does not, because the DLBS tables
+    # are built from participants with two or more visits while the HCP-A ones
+    # keep every session. Deriving one name from the other reads nothing.
+    f = (f"measured_pvs_axis_hcpa_b1500_all{_sx}.csv" if cohort == "hcpa"
+         else f"measured_pvs_axis_dlbs{_sx}.csv")
+    if not (HERE / f).exists():
+        raise SystemExit(f"{f} is not present")
+    if _wm:
+        print(f"using the first submission's warped masks: {f}")
     d = pd.read_csv(HERE / f)
     d["Subject_ID"] = d.Subject_ID.astype(str)
     d["Visit"] = d.Visit.astype(str)
-    d["ratio"] = (d.l2_proj + d.l2_assoc) / (d.l3_proj + d.l3_assoc)
+    # pv_perp, not (l2_proj + l2_assoc) / (l3_proj + l3_assoc). The two are the
+    # same quantity and agree at r = 0.9999, differing only in whether the
+    # hemispheres are combined before or after the division. pv_perp divides
+    # within each hemisphere and then averages, which is how every variant it
+    # is compared against is built, so this keeps the comparison like for like.
+    d["ratio"] = d["pv_perp"]
 
     # Conditioning of the tensor fit, the last alternative explanation for a
     # directional variant retaining anything. An estimated eigenvector is only
@@ -155,7 +175,15 @@ def partial_corr(x, y, Zc):
         b, *_ = np.linalg.lstsq(Z, v, rcond=None)
         return v - Z @ b
     rx, ry = rz(x), rz(y)
-    if np.std(rx) == 0 or np.std(ry) == 0:
+    # pv_perp is the ratio, so in any arm that partials the ratio out its
+    # residual is floating-point residue rather than signal. Correlating that
+    # residue returns an arbitrary number that happens to look like a clean
+    # zero here and looked like a significant result elsewhere. Testing
+    # against exactly zero misses it, since the residue is never exactly zero,
+    # so compare it against the variable's own spread. A collapsed residual is
+    # then reported as undefined instead of as a variant that retains nothing.
+    if (np.std(rx) <= 1e-8 * max(np.std(x), 1e-30)
+            or np.std(ry) <= 1e-8 * max(np.std(y), 1e-30)):
         return np.nan, np.nan, len(x)
     r = float(np.corrcoef(rx, ry)[0, 1])
     dof = len(x) - Z.shape[1] - 1
@@ -210,6 +238,25 @@ def main() -> None:
         m = m.merge(q[["Subject_ID", "Visit", "det", "aniso", "shear"]],
                     on=["Subject_ID", "Visit"], how="left")
         extra["reg"] = ["det", "aniso", "shear"]
+
+    # Region volume. In the cross-sectional age models this is the single
+    # largest adjustment, taking the HCP-A classic coefficient from -0.448 to
+    # -0.300, so leaving it out of a within-person model would hold this sweep
+    # to a lower standard than the paper's own age associations. Unlike site or
+    # sex it is not time-invariant, so within-person centering does not remove
+    # it and it has to be carried explicitly.
+    sph = (DIFF / "HCP" / "hcpa_alps_spheres_5mm.csv" if args.cohort == "hcpa"
+           else DIFF / "DLBS" / "dlbs_alps_spheres_5mm.csv")
+    if sph.exists():
+        s = pd.read_csv(sph)
+        s["Subject_ID"] = s.Subject_ID.astype(str)
+        s["Visit"] = (s.Visit if "Visit" in s.columns else s.Session).astype(str)
+        if {"n_proj", "n_assoc"} <= set(s.columns):
+            s["nvox"] = (pd.to_numeric(s.n_proj, errors="coerce")
+                         + pd.to_numeric(s.n_assoc, errors="coerce"))
+            m = m.merge(s[["Subject_ID", "Visit", "nvox"]],
+                        on=["Subject_ID", "Visit"], how="left")
+            extra["roi"] = ["nvox"]
     cond = [c for c in ("fa_proj", "fa_assoc", "md_proj", "md_assoc")
             if c in m.columns]
     if cond:
@@ -255,9 +302,17 @@ def main() -> None:
         # The full model. Everything that has been offered as an alternative
         # explanation, in one place: age drift, the radial anisotropy, practice
         # at first exposure, head pose, and registration quality.
-        full = ["Age", "ratio", "is_first"] + extra.get("pose", []) \
-            + extra.get("reg", []) + extra.get("cond", [])
+        full = (["Age", "ratio", "is_first"] + extra.get("pose", [])
+                + extra.get("reg", []) + extra.get("cond", [])
+                + extra.get("roi", []))
         arms["everything"] = (full, [])
+        # Motion enters last and on its own matched sample. The motion cache
+        # covers about half the sessions, so the arm that adjusts for it and the
+        # arm that does not have to be compared on the same participants, or the
+        # sample does the work rather than the covariate.
+        if extra.get("motion"):
+            arms["everything|mot-sub"] = (full, extra["motion"])
+            arms["everything+motion"] = (full + extra["motion"], [])
     print("covariate arms:", {k: v for k, v in arms.items()})
     print()
 
@@ -288,7 +343,12 @@ def main() -> None:
     out["q"] = out.groupby(["arm", "variant"]).p.transform(
         lambda s: bh(s.to_numpy()))
     out = out.sort_values(["arm", "variant", "p"])
-    out.to_csv(HERE / f"phenotype_longitudinal_{args.cohort}.csv", index=False)
+    # The re-sphered run must not land on the published filename. The verifier
+    # reads that file, so overwriting it would move the manuscript's numbers
+    # without anything recording that the placement rule had changed.
+    _tag = args.cohort + ("_warpedmask" if os.environ.get("ALPS_WARPED_MASK")
+                          else "")
+    out.to_csv(HERE / f"phenotype_longitudinal_{_tag}.csv", index=False)
 
     print("=== within-participant, survivors at BH q<0.05 ===")
     print(f"{'variant':<12s} " + "  ".join(f"{a:>14s}" for a in arms))
@@ -306,7 +366,7 @@ def main() -> None:
             t = gg.iloc[0]
             print(f"      {v:<12s} {t.phenotype[:36]:<36s} "
                   f"r={t.r:+.3f}  q={t.q:.2e}")
-    print(f"\n   wrote phenotype_longitudinal_{args.cohort}.csv")
+    print(f"\n   wrote phenotype_longitudinal_{_tag}.csv")
 
 
 if __name__ == "__main__":

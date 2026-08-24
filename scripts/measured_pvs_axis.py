@@ -62,7 +62,28 @@ from registration_aligns_tracts import polar_rotation
 HERE = Path(__file__).resolve().parent
 DIFF = HERE.parent.parent / "diffusion"
 OUT = winpath("Q:/dti_output")
-SLAB_MM, FA_MIN = 8.0, 0.2
+SLAB_MM = 8.0
+# The FA floor excludes voxels whose tensor direction is unreliable and whose
+# diffusivities are contaminated by CSF, which matters because these regions sit
+# near the ventricles. It is also, strictly, a selection on the measured signal,
+# which is the objection this paper raises against positioning a region by the
+# appearance of the diffusion map. Both choices carry an age dependence and in
+# opposite directions: keeping the floor removes more voxels in older brains
+# because FA falls, and dropping it admits more ventricular partial volume in
+# older brains because ventricles enlarge. It is configurable so the two can be
+# compared rather than assumed.
+FA_MIN = float(os.environ.get("ALPS_FA_MIN", "0.2"))
+# Radius in millimetres of the native-space sphere drawn at each warped
+# region's centre. This is the primary analysis, because warping the template
+# mask into native space leaves region size varying almost eightfold across
+# HCP-A, and a size that varies has to be adjusted for. Drawing the sphere
+# fresh at the warped centre holds size fixed instead, so the adjustment
+# becomes unnecessary rather than arguable.
+#
+# Zero restores the warped mask, the behaviour of the first submission. It
+# writes to a _warpedmask name so the two can be compared and so neither run
+# can silently overwrite the other.
+SPHERE_MM = float(os.environ.get("ALPS_SPHERE_MM", "5"))
 VARIANTS = ["classic", "cross", "v2_sphere", "v2_slab", "pv_perp", "anat_x"]
 SHELL = os.environ.get("ALPS_TENSOR_SUFFIX", "")
 
@@ -111,6 +132,24 @@ def main() -> None:
     src = src.sort_values(["Subject_ID", "Visit"])
     print(f"cohort {args.cohort}: {len(src)} sessions, {src.Subject_ID.nunique()} participants\n")
 
+    # Resolved before the loop so the partial results can be flushed as they
+    # accumulate. A run of this length should not have to start over because
+    # the machine was restarted near the end of it.
+    suffix = "_all" if args.all_sessions else ""
+    # The primary 5 mm sphere takes the plain name, since it is what the
+    # manuscript reports and what every downstream script should read without
+    # having to know about this option at all.
+    if SPHERE_MM == 5:
+        _fx = ""
+    elif SPHERE_MM:
+        _fx = f"_sph{SPHERE_MM:g}"
+    else:
+        _fx = "_warpedmask"
+    if FA_MIN != 0.2:
+        _fx += f"_fa{FA_MIN:g}"
+    outp = HERE / f"measured_pvs_axis_{args.cohort}{SHELL}{suffix}{_fx}.csv"
+    print(f"writing to {outp.name}, flushed every 50 sessions\n", flush=True)
+
     rows = []
     for i, r in enumerate(src.itertuples(), 1):
         sd = OUT / r.DTI_Session_ID / "processed"
@@ -140,7 +179,33 @@ def main() -> None:
         ii, jj, kk = np.indices(lab.shape)
         Af = limg.affine
         xw = Af[0, 0] * ii + Af[0, 1] * jj + Af[0, 2] * kk + Af[0, 3]
+        yw = Af[1, 0] * ii + Af[1, 1] * jj + Af[1, 2] * kk + Af[1, 3]
         zw = Af[2, 0] * ii + Af[2, 1] * jj + Af[2, 2] * kk + Af[2, 3]
+
+        def resphere(m, radius):
+            """Replace a warped region with a true sphere at its own centre.
+
+            The template spheres are a fixed 515 mm^3, but warping the mask
+            into native space distorts both its size and its shape: HCP-A
+            regions range over thirteenfold. Eroding the warped mask would fix
+            the size and keep the distorted shape.
+
+            Warping only the centre and drawing the sphere fresh in native
+            space fixes both. Registration then decides where the region sits,
+            which is what it is good at, and not what shape it is. This is also
+            what the original method does, which places spheres in native space
+            rather than warping masks into it.
+
+            The centre is the centroid of the warped mask in millimetres, so
+            anisotropic voxels do not squash it. Selection is geometric and
+            looks at no measured quantity, so unlike an FA-ranked rule it
+            cannot introduce a dependence on age.
+            """
+            if radius <= 0 or not m.any():
+                return m
+            cx, cy, cz = xw[m].mean(), yw[m].mean(), zw[m].mean()
+            d2 = (xw - cx) ** 2 + (yw - cy) ** 2 + (zw - cz) ** 2
+            return d2 <= radius ** 2
 
         def evec(m, which):
             V = vc[m]; o = srt[m]
@@ -158,9 +223,24 @@ def main() -> None:
         # anisotropy can be formed downstream without returning to the images
         eig = {f"{e}_{r}": [] for e in ("l1", "l2", "l3")
                for r in ("proj", "assoc")}
+        # Region sizes, so the effect of re-sphering on size variation can be
+        # read off the output instead of assumed. The geometric count is what
+        # the placement rule alone produces and is fixed by construction once
+        # the radius is fixed. The plain count is what survives the FA mask,
+        # which the sphere does not control, so the two differ and both are
+        # worth carrying. Counts are per hemisphere, like every other quantity
+        # here, since the record averages over the two.
+        cnt = {k: [] for k in ("n_proj", "n_assoc",
+                               "n_proj_geom", "n_assoc_geom")}
         for hemi, side, scr, slf in (("L", xw < 0, 26, 42), ("R", xw > 0, 25, 41)):
-            mp_s = (sph == 1) & side & (fa >= FA_MIN)
-            ma_s = (sph == 2) & side & (fa >= FA_MIN)
+            if SPHERE_MM:
+                mp_g = resphere((sph == 1) & side, SPHERE_MM)
+                ma_g = resphere((sph == 2) & side, SPHERE_MM)
+            else:
+                mp_g = (sph == 1) & side
+                ma_g = (sph == 2) & side
+            mp_s = mp_g & (fa >= FA_MIN)
+            ma_s = ma_g & (fa >= FA_MIN)
             if mp_s.sum() < 4 or ma_s.sum() < 4:
                 continue
             z0 = float(np.median(zw[sph > 0])) if (sph > 0).any() else 0.0
@@ -208,6 +288,10 @@ def main() -> None:
             for _e, _v in (("l1", l1), ("l2", l2), ("l3", l3)):
                 eig[f"{_e}_proj"].append(float(_v[mp_s].mean()))
                 eig[f"{_e}_assoc"].append(float(_v[ma_s].mean()))
+            cnt["n_proj"].append(float(mp_s.sum()))
+            cnt["n_assoc"].append(float(ma_s.sum()))
+            cnt["n_proj_geom"].append(float(mp_g.sum()))
+            cnt["n_assoc_geom"].append(float(ma_g.sum()))
             acc["cross"].append(alps(p_cross))
             # Anatomical left-right, the same axis in both hemispheres, pulled
             # back from the template by the rotation of the subject-to-template
@@ -246,16 +330,16 @@ def main() -> None:
         if not acc["classic"]:
             continue
         rec = {"Subject_ID": r.Subject_ID, "Visit": r.Visit, "Age": r.Age}
-        for k, v in {**acc, **ang, **eig}.items():
+        for k, v in {**acc, **ang, **eig, **cnt}.items():
             if v:
                 rec[k] = float(np.mean(v))
         rows.append(rec)
         if i % 50 == 0:
             print(f"  {i}/{len(src)}", flush=True)
+            pd.DataFrame(rows).to_csv(outp, index=False)
 
     d = pd.DataFrame(rows)
-    suffix = "_all" if args.all_sessions else ""
-    d.to_csv(HERE / f"measured_pvs_axis_{args.cohort}{SHELL}{suffix}.csv", index=False)
+    d.to_csv(outp, index=False)
     lon = d[d.Subject_ID.isin(d.Subject_ID.value_counts()[lambda s: s >= 2].index)]
     print(f"\n{len(d)} sessions, {len(lon)} longitudinal, {lon.Subject_ID.nunique()} participants\n")
 

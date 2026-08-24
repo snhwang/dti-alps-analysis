@@ -304,7 +304,8 @@ results.append((TEX.count(r"$8.2^{\circ}$") == 2,
                 "isotropic crossover is 8.2 in both places", None, None))
 
 for phrase in [r"$3.67\%$ (flat)", r"$9.1^{\circ}$", r"$45.0\%$",
-               r"r=-0.414", r"$r=+0.332$", r"$r=+0.258$",
+               # r=-0.414 was the patient cohort's pitch tracking and went with it.
+               r"$r=+0.332$", r"$r=+0.258$",
                # CP=0.216 retired with the measurement-location section: the claim that
                # the ALPS regions are among the most planar white matter is now made
                # qualitatively in the Discussion, so no planar coefficient appears
@@ -1263,9 +1264,14 @@ _flat = " ".join(TEX.split())
 for _over in ("The originators aligned the slice prescription",
               "not stated in the original report"):
     check(f"unsourced AC-PC claim absent: {_over[:32]}", 0.0, float(_over in _flat))
+# Test the credit, not the wording. An earlier version matched a long verbatim
+# phrase and failed when "the plane along" became "the plane aligned along",
+# which changed nothing about who is credited for what.
+_ac = " ".join(TEX.split())
 check("Taoka credited for the acquisition-plane statement", 1.0,
-      float("should be performed on images acquired with the plane along"
-            in " ".join(TEX.split())))
+      float("anterior-commissure-to-posterior-commissure" in _ac
+            and "acquired with the plane" in _ac
+            and "ref1,ref26" in _ac))
 
 check("the 2017 original method paper is cited", 1.0,
       float("bibitem{ref26}" in TEX and "ref26}" in TEX.split("bibitem{ref26}")[0]
@@ -1473,10 +1479,22 @@ _nv = ' '.join(TEX.split())
 for _over in ('has not been asked', 'not previously been tested',
               'nobody has', 'has never been'):
     check(f'no unqualified novelty claim: {_over[:28]}', 0.0, float(_over in _nv))
-check('Burles credited for the sex finding up front', 1.0,
-      float('pitch differs by sex in ADNI' in _nv))
-check('our question scoped to age and clinical group', 1.0,
-      float('covaries with age and with clinical group' in _nv))
+# Burles must be credited by name in the Introduction, for the survey of how
+# rarely orientation is reported and for the ADNI head-position finding. Which
+# ADNI result is quoted is an editorial choice, so the check does not fix one.
+_intro = _nv[:_nv.index('section{Theory}')] if 'section{Theory}' in _nv else _nv
+check('Burles credited by name in the Introduction', 1.0,
+      float('Burles et al.' in _intro and 'ADNI' in _intro
+            and 'ref4' in _intro))
+# The question is scoped to age. It used to include clinical group, which the
+# patient cohort supported; that cohort was withdrawn, so claiming the paper
+# asks about clinical group would promise something it no longer delivers.
+# The diagnostic still says the reader's variable may be "age or a clinical
+# grouping", which is right, so the test is on our own question rather than on
+# the phrase appearing anywhere.
+check('our question scoped to what the paper tests', 1.0,
+      float('covaries with age' in _nv
+            and 'covaries with age and clinical group' not in _nv))
 
 # Wright published the v2-coherence observation and the noise argument first.
 # We had credited both to Schilling. Third instance of the same slip in one audit.
@@ -1738,6 +1756,38 @@ check('worked example: the identity closes', 1.0,
       float(abs((_dw.beta_y_g - _dw["product"]) - _dw.beta_y_gp) < 5e-3))
 check('worked example: fraction carried by pose (%)', 42.0,
       float(_dw.pct_pose), tol=0.6)
+
+
+# --- hand placement drifts from the atlas with age ---
+# The Methods justify automating region placement partly on this, so the
+# numbers are recomputed from the saved displacements rather than trusted.
+_cs = pd.read_csv(HERE / 'manual_centroid_shift.csv')
+check('centroid-shift sessions', 78.0, float(len(_cs)))
+# The median separations are no longer quoted in the text, because a free-hand
+# region on one slice and a sphere spanning three differ by definition and a
+# raw distance would read as disagreement rather than as a difference in shape.
+# They are still checked, since the trend below is computed from them.
+for _c, _med in (('proj_L_dist', 9.0), ('proj_R_dist', 8.8),
+                 ('assoc_L_dist', 4.7), ('assoc_R_dist', 4.7)):
+    check(f'{_c} median separation (mm)', _med,
+          float(_cs[_c].median()), tol=0.02)
+# The hand regions must actually be what the Methods say they are.
+check('manuscript states the free-hand tracing', 1.0,
+      float('traced free-hand on one or two slices' in ' '.join(TEX.split())))
+for _c, _r, _p in (('proj_L_dist', 0.231, 0.042), ('proj_R_dist', 0.310, 0.006)):
+    _s = _cs[[_c, 'Age']].dropna()
+    _rr, _pp = stats.pearsonr(_s[_c], _s.Age)
+    check(f'{_c} grows with age', _r, float(_rr), tol=0.02)
+    check(f'{_c} age p-value', _p, float(_pp), tol=0.15)
+# The association regions must stay flat, which is what separates a rater
+# effect from a registration that degrades with age.
+for _c in ('assoc_L_dist', 'assoc_R_dist'):
+    _s = _cs[[_c, 'Age']].dropna()
+    check(f'{_c} is flat with age', 1.0,
+          float(abs(stats.pearsonr(_s[_c], _s.Age)[0]) <= 0.05))
+_s = _cs[['proj_L_dz', 'Age']].dropna()
+check('left projection drifts inferior with age', -0.281,
+      float(stats.pearsonr(_s.proj_L_dz, _s.Age)[0]), tol=0.02)
 
 
 print(f"{'':4s} {'check':<52s} {'claimed':>10s} {'actual':>10s}")

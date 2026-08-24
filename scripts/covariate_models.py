@@ -81,13 +81,41 @@ def build(cohort: str) -> pd.DataFrame:
     d["motion"] = pd.to_numeric(d.Eddy_Mean_RMS, errors="coerce")
     d["Sex"] = d["Sex"].astype(str).str.strip().str.upper().str[0]
     d = d[d.Sex.isin(["M", "F"])]
+
+    # Body habitus. pose_phenotype.py finds that head position tracks BMI in
+    # both cohorts, r=+0.28 in DLBS and +0.19 in HCP-A given age and sex, so a
+    # body-size term belongs in a model that claims to control what else could
+    # drive an age association. It was not in the reviewer's list, which is why
+    # it was missing.
+    if cohort == "hcpa":
+        a = pd.read_csv(DIFF / "HCP" / "AABC2_subjects_2026_02_05_14_29_11.csv",
+                        low_memory=False)
+        a["Subject_ID"] = a.id_event.astype(str).str.split("_").str[0]
+        if "bmi" in a.columns:
+            b = a.groupby("Subject_ID")["bmi"].first().reset_index()
+            b["Subject_ID"] = b.Subject_ID.astype(str)
+            d["Subject_ID"] = d.Subject_ID.astype(str)
+            d = d.merge(b, on="Subject_ID", how="left")
+    else:
+        t = pd.read_csv(DIFF / "DLBS" / "ds004856_participants.tsv", sep="	",
+                        low_memory=False)
+        t["Subject_ID"] = t.participant_id.astype(str)
+        if "BMI_W1" in t.columns:
+            d["Subject_ID"] = d.Subject_ID.astype(str)
+            d = d.merge(t[["Subject_ID", "BMI_W1"]].rename(
+                columns={"BMI_W1": "bmi"}), on="Subject_ID", how="left")
+    if "bmi" not in d.columns:
+        d["bmi"] = float("nan")
     return d.dropna(subset=["Age", "classic", "refined_slab", "nvox", "motion"])
 
 
 def run(d: pd.DataFrame, col: str, formula: str) -> tuple[float, float, float]:
-    x = d[["Subject_ID", "Age", "Sex", "site", "scanner", "nvox", "motion", col]].dropna()
+    cols = ["Subject_ID", "Age", "Sex", "site", "scanner", "nvox", "motion", col]
+    if "bmi" in formula:
+        cols.append("bmi")
+    x = d[cols].dropna()
     x = x.rename(columns={col: "y"})
-    for c in ("y", "Age", "nvox", "motion"):
+    for c in ("y", "Age", "nvox", "motion") + (("bmi",) if "bmi" in formula else ()):
         x[c + "_z"] = (x[c] - x[c].mean()) / x[c].std(ddof=1)
     f = smf.ols(formula, x).fit(cov_type="cluster",
                                 cov_kwds={"groups": x["Subject_ID"]})
@@ -108,6 +136,10 @@ def main() -> None:
                   ("+ sex, motion", "y_z ~ Age_z + C(Sex) + motion_z"),
                   ("+ sex, motion, ROI volume",
                    "y_z ~ Age_z + C(Sex) + motion_z + nvox_z")]
+        # BMI last, on its own matched sample, since it is missing for some
+        # participants and a smaller sample moves the coefficient by itself.
+        models.append(("+ sex, motion, ROI volume, BMI",
+                       "y_z ~ Age_z + C(Sex) + motion_z + nvox_z + bmi_z"))
         if nsite > 1:
             models.append(("+ sex, motion, ROI volume, site",
                            "y_z ~ Age_z + C(Sex) + motion_z + nvox_z + C(site)"))

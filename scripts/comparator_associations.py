@@ -29,7 +29,8 @@ import pandas as pd
 from scipy import stats
 
 HERE = Path(__file__).resolve().parent
-VARIANTS = ["classic", "cross", "pv_perp", "anat_x", "ALPS-PAS", "per-voxel"]
+VARIANTS = ["classic", "cross", "pv_perp", "anat_x", "ALPS-PAS", "per-voxel",
+            "LD-ALPS"]
 # What the manuscript currently prints for classic, as the correctness check.
 KNOWN = {"dlbs": {"all_sessions": -0.396, "one_per_participant": -0.328},
          "hcpa": {"all_sessions": -0.465, "one_per_participant": -0.430}}
@@ -44,7 +45,15 @@ def partial_out(y, x, z):
     def rz(v):
         b, *_ = np.linalg.lstsq(Z, v, rcond=None)
         return v - Z @ b
-    return float(np.corrcoef(rz(y), rz(x))[0, 1]), int(ok.sum())
+    ry, rx = rz(y), rz(x)
+    # pv_perp is the ratio, so regressing the ratio out of it leaves floating
+    # point residue rather than signal, and correlating that residue returns an
+    # arbitrary value. Here it returned +0.081, large enough to be read as a
+    # variant retaining something. Comparing the residual against the
+    # variable's own spread catches it, where testing for exactly zero does not.
+    if np.std(ry) <= 1e-8 * max(np.std(y), 1e-30) or np.std(rx) == 0:
+        return float("nan"), int(ok.sum())
+    return float(np.corrcoef(ry, rx)[0, 1]), int(ok.sum())
 
 
 def main() -> None:
@@ -66,6 +75,26 @@ def main() -> None:
     base["ratio"] = base["pv_perp"]
     m = c.merge(base[["Subject_ID", "Visit", "Age", "ratio"]],
                 on=["Subject_ID", "Visit"], how="inner")
+
+    # LD-ALPS comes from the vendored reference implementation and so lives in
+    # its own file rather than in the comparators pass. It is merged in here so
+    # it goes through the same conventions and the same reproduce-classic check
+    # as everything else. Sessions it could not compute are simply absent, and
+    # the printed n shows how many it covered.
+    ld = HERE / f"ld_alps_{args.cohort}.csv"
+    if ld.exists():
+        L = pd.read_csv(ld)
+        if {"Subject_ID", "Visit", "ALPS_overall"} <= set(L.columns):
+            L = L[["Subject_ID", "Visit", "ALPS_overall"]].rename(
+                columns={"ALPS_overall": "LD-ALPS"})
+            L["Subject_ID"] = L.Subject_ID.astype(str)
+            L["Visit"] = L.Visit.astype(str)
+            before = len(m)
+            m = m.merge(L, on=["Subject_ID", "Visit"], how="left")
+            print(f"LD-ALPS merged: {int(m['LD-ALPS'].notna().sum())} of "
+                  f"{before} sessions\n")
+        else:
+            print(f"{ld.name} lacks Subject_ID/Visit/ALPS_overall, not merged\n")
     print(f"{args.cohort}: {len(m)} sessions, {m.Subject_ID.nunique()} participants\n")
 
     have = [v for v in VARIANTS if v in m.columns and m[v].notna().sum() > 20]

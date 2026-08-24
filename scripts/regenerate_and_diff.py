@@ -49,13 +49,66 @@ REPO = HERE.parent
 B1500 = {"ALPS_TENSOR_SUFFIX": "_b1500"}
 
 # (group, label, argv, env, outputs, approx_minutes)
+#
+# The index group comes first because everything else reads its two tables.
+# Both are measured inside 5 mm spheres redrawn in native space, which is the
+# default, so no placement variable appears here. ALPS_SPHERE_MM=0 reproduces
+# the first submission's warped masks into _warpedmask filenames instead.
 STEPS = [
+    ("index", "variant indices, HCP-A",
+     ["measured_pvs_axis.py", "--cohort", "hcpa", "--all-sessions"], B1500,
+     ["measured_pvs_axis_hcpa_b1500_all.csv"], 40),
+    ("index", "variant indices, DLBS",
+     ["measured_pvs_axis.py", "--cohort", "dlbs"], {},
+     ["measured_pvs_axis_dlbs.csv"], 10),
+    ("index", "ALPS-PAS and per-voxel comparators, HCP-A",
+     ["aging_cohort_comparators.py", "--cohort", "hcpa", "--jobs", "8"], {},
+     ["comparators_hcpa.csv"], 30),
+    ("index", "ALPS-PAS and per-voxel comparators, DLBS",
+     ["aging_cohort_comparators.py", "--cohort", "dlbs", "--jobs", "8"], {},
+     ["comparators_dlbs.csv"], 12),
+    ("index", "what re-sphering changed, claim by claim",
+     ["resphere_impact.py"], {}, ["resphere_impact.csv"], 1),
+
+    ("ratio", "comparator associations, HCP-A",
+     ["comparator_associations.py", "--cohort", "hcpa"], {},
+     ["comparator_associations_hcpa.csv"], 1),
+    ("ratio", "comparator associations, DLBS",
+     ["comparator_associations.py", "--cohort", "dlbs"], {},
+     ["comparator_associations_dlbs.csv"], 1),
+    ("ratio", "does any variant carry anything beyond the ratio",
+     ["beyond_eigenvalue_ratio.py"], {}, ["beyond_eigenvalue_ratio.csv"], 1),
+    ("ratio", "beyond the ratio under the full covariate set, HCP-A",
+     ["beyond_ratio_adjusted.py", "--cohort", "hcpa"], {},
+     ["beyond_ratio_adjusted_hcpa.csv"], 1),
+    ("ratio", "beyond the ratio under the full covariate set, DLBS",
+     ["beyond_ratio_adjusted.py", "--cohort", "dlbs"], {},
+     ["beyond_ratio_adjusted_dlbs.csv"], 1),
+
+    ("phenotype", "within-participant phenotype sweep, HCP-A",
+     ["phenotype_longitudinal.py", "--cohort", "hcpa"], {},
+     ["phenotype_longitudinal_hcpa.csv"], 3),
+    ("phenotype", "within-participant phenotype sweep, DLBS",
+     ["phenotype_longitudinal.py", "--cohort", "dlbs"], {},
+     ["phenotype_longitudinal_dlbs.csv"], 2),
+    ("phenotype", "head pose against the phenotypes, HCP-A",
+     ["pose_phenotype.py", "--cohort", "hcpa"], {},
+     ["pose_phenotype_hcpa.csv"], 2),
+    ("phenotype", "head pose against the phenotypes, DLBS",
+     ["pose_phenotype.py", "--cohort", "dlbs"], {},
+     ["pose_phenotype_dlbs.csv"], 1),
+    ("phenotype", "pose against tau under matched controls",
+     ["pose_tau_controls.py"], {}, ["pose_tau_controls.csv"], 1),
+
+    ("placement", "is hand placement age dependent",
+     ["manual_placement_age.py"], {}, ["manual_placement_age.csv"], 1),
+    ("placement", "hand minus atlas centroid displacement",
+     ["manual_centroid_shift.py"], {}, ["manual_centroid_shift.csv"], 1),
+
     ("pose", "head rotation, HCP-A",
      ["head_rotation_observed.py", "--cohort", "hcpa"], {}, ["head_rotation_hcpa.csv"], 2),
     ("pose", "head rotation, DLBS",
      ["head_rotation_observed.py", "--cohort", "dlbs"], {}, ["head_rotation_dlbs.csv"], 1),
-    ("pose", "head rotation, trigeminal",
-     ["head_rotation_observed.py", "--cohort", "tn"], {}, ["head_rotation_tn.csv"], 1),
     ("pose", "slab prescription control",
      ["slab_prescription_control.py"], {}, ["slab_prescription_dlbs.csv"], 2),
 
@@ -97,11 +150,9 @@ STEPS = [
      ["sorting_bias_floor.py"], {}, ["sorting_bias_floor.csv"], 1),
     ("variants", "shortfall decomposition against measured angles",
      ["shortfall_decomposition.py"], {}, ["shortfall_decomposition.csv"], 1),
-    ("patient", "trigeminal pose absorption against a permutation null",
-     ["tn_pose_permutation.py"], {}, ["tn_pose_permutation.csv"], 1),
-    ("patient", "trigeminal group positioning, Welch with Levene and BH",
-     ["tn_positioning_test.py"], {},
-     ["tn_positioning_test.csv", "tn_positioning_adjusted.csv"], 1),
+    # The trigeminal entries were dropped with that cohort. Its scripts are not
+    # published, so leaving them here would break the chain at a step that no
+    # longer supports any claim in the paper.
     ("variants", "what the two-region geometry costs",
      ["tract_orthogonality.py"], {},
      ["tract_orthogonality_rotation.csv", "tract_orthogonality_alignment.csv"], 1),
