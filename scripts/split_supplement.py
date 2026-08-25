@@ -27,8 +27,10 @@ SUPP = HERE.parent / "mri_supplement.tex"
 
 # Subsections whose question the revision retired, with the reviewer point each
 # answers so the reply can say where the answer went.
-MOVE = [("What the Two-Region Geometry Costs", "R3.4, R1.4"),
-        ("A Voxelwise Variant (Refined+)", "R1.4")]
+MOVE = [("Rotation Simulation Protocol", "apparatus for a demonstration that is not needed"),
+        ("The Size of the Orientation Error", "its headline is true by construction"),
+        ("Consequences for Group Comparisons and Single-Patient Reads",
+         "its conclusion now follows from the closed form")]
 
 PREAMBLE = r"""\documentclass[3p]{elsarticle}
 \usepackage{amsmath,amssymb,graphicx,booktabs,array,xr}
@@ -45,13 +47,28 @@ PREAMBLE = r"""\documentclass[3p]{elsarticle}
 
 \vspace{1em}
 
-These analyses were requested during review. They are reported here rather than
-in the article because the revision changed what the paper claims. They examine
-the construction of the refined index and the choice between its variants, and
-the paper no longer argues that any variant is preferable, only that every one
-of them is bounded by and collapses to the same eigenvalue ratio. The analyses
-are unchanged and complete, and we are glad to return them to the article if the
-reviewers prefer.
+These analyses are reported here rather than in the article because the revision
+made them unnecessary to its argument, and because two reviewers identified the
+weakness in the central one.
+
+The rotation experiment imposes known rotations on already-aligned data and
+shows that the corrected variants do not change. That is true by construction:
+they are evaluated along axes that rotate with the tensor, and the invariance
+was verified to machine precision rather than needing a simulation to reveal it.
+Reviewers 1 and 4 both made this point, and we agree with it.
+
+The quantities that do matter are now obtained without it. That pitch lowers the
+index and cannot raise it, and that roll and yaw are an order smaller and of
+undetermined sign, follow in closed form from the two-region geometry. The size
+of the effect in real heads is measured directly, from the change in the index
+between visits at which a participant was genuinely repositioned, and from the
+share of the age association that pose adjustment removes. That groups differ in
+head position is measured in the cohort rather than imposed, by splitting on
+body habitus.
+
+The experiments are unchanged and complete, and a reader who wants the
+dose-response curves will find them here. We are glad to return them to the
+article if the reviewers prefer.
 
 \renewcommand{\thesection}{S\arabic{section}}
 \setcounter{section}{0}

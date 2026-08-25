@@ -30,6 +30,7 @@ Writes denominator_contamination_<cohort>.csv.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -49,6 +50,9 @@ DIFF = HERE.parent.parent / "diffusion"
 OUT = winpath("Q:/dti_output")
 FA_MIN = 0.2
 SLAB_MM = 8.0
+# Radius of the native-space sphere drawn at each warped region centre,
+# matching the default in measured_pvs_axis. Zero restores the warped mask.
+SPHERE_MM = float(os.environ.get("ALPS_SPHERE_MM", "5"))
 
 
 def lambda1_share(evals, evecs, u):
@@ -153,8 +157,23 @@ def main() -> None:
         A = limg.affine
         zc = A[2, 0] * ii + A[2, 1] * jj + A[2, 2] * kk + A[2, 3]
         xw = A[0, 0] * ii + A[0, 1] * jj + A[0, 2] * kk + A[0, 3]
+        yw = A[1, 0] * ii + A[1, 1] * jj + A[1, 2] * kk + A[1, 3]
         z0 = float(np.median(zc[sph > 0])) if (sph > 0).any() else 0.0
         band = np.abs(zc - z0) <= SLAB_MM
+
+        def resphere(m, radius):
+            """The placement rule measured_pvs_axis uses, applied here too.
+
+            Contamination is a property of the voxels the index is measured in,
+            so measuring it inside the warped mask while the index is measured
+            inside a redrawn sphere would describe a region the manuscript does
+            not report anywhere else.
+            """
+            if radius <= 0 or not m.any():
+                return m
+            cx, cy, cz = xw[m].mean(), yw[m].mean(), zc[m].mean()
+            d2 = (xw - cx) ** 2 + (yw - cy) ** 2 + (zc - cz) ** 2
+            return d2 <= radius ** 2
 
         def pack(m):
             v1 = evecs[m][:, :, 0]
@@ -164,7 +183,8 @@ def main() -> None:
 
         for hemi, scr, slf in HEMIS:
             side = xw < 0 if hemi == "L" else xw > 0
-            mp_s, ma_s = (sph == 1) & side & (fa >= FA_MIN), (sph == 2) & side & (fa >= FA_MIN)
+            mp_s = resphere((sph == 1) & side, SPHERE_MM) & (fa >= FA_MIN)
+            ma_s = resphere((sph == 2) & side, SPHERE_MM) & (fa >= FA_MIN)
             mp_l = (lab == scr) & (fa >= FA_MIN) & band
             ma_l = (lab == slf) & (fa >= FA_MIN) & band
             if mp_s.sum() < 4 or ma_s.sum() < 4 or mp_l.sum() < 10 or ma_l.sum() < 10:

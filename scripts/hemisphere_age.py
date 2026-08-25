@@ -43,6 +43,9 @@ HERE = Path(__file__).resolve().parent
 DIFF = HERE.parent.parent / "diffusion"
 OUT = winpath("Q:/dti_output")
 SLAB_MM, FA_MIN = 8.0, 0.2
+# Radius of the native-space sphere drawn at each warped region centre,
+# matching the default in measured_pvs_axis. Zero restores the warped mask.
+SPHERE_MM = float(os.environ.get("ALPS_SPHERE_MM", "5"))
 SHELL = os.environ.get("ALPS_TENSOR_SUFFIX", "")
 
 
@@ -117,6 +120,18 @@ def main() -> None:
         # measured one hemisphere while estimating directions from the other.
         xc = (limg.affine[0, 0] * ii + limg.affine[0, 1] * jj
               + limg.affine[0, 2] * kk + limg.affine[0, 3])
+        yc = (limg.affine[1, 0] * ii + limg.affine[1, 1] * jj
+              + limg.affine[1, 2] * kk + limg.affine[1, 3])
+
+        def resphere(m, radius):
+            """The placement rule measured_pvs_axis uses, applied here too, so
+            the per-hemisphere indices are the same measurement as the pooled
+            ones they are compared against."""
+            if radius <= 0 or not m.any():
+                return m
+            cx, cy, cz = xc[m].mean(), yc[m].mean(), zc[m].mean()
+            d2 = (xc - cx) ** 2 + (yc - cy) ** 2 + (zc - cz) ** 2
+            return d2 <= radius ** 2
 
         def pack(mask):
             v1 = evecs[mask][:, :, 0]
@@ -125,8 +140,8 @@ def main() -> None:
 
         rec = {"Subject_ID": r.Subject_ID, "Visit": r.Visit, "Age": r.Age}
         for hemi, side, scr, slf in (("L", xc < 0, 26, 42), ("R", xc > 0, 25, 41)):
-            mp_s = (sph == 1) & side & (fa >= FA_MIN)
-            ma_s = (sph == 2) & side & (fa >= FA_MIN)
+            mp_s = resphere((sph == 1) & side, SPHERE_MM) & (fa >= FA_MIN)
+            ma_s = resphere((sph == 2) & side, SPHERE_MM) & (fa >= FA_MIN)
             if mp_s.sum() < 4 or ma_s.sum() < 4:
                 continue
             P, A = pack(mp_s), pack(ma_s)

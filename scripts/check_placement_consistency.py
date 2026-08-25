@@ -44,6 +44,12 @@ BY_DESIGN = {
     "build_roi_comparison_figure.py": "draws the regions being compared",
     "tn_placement_frame_check.py": "retired with the patient cohort",
     "ds001907_alps.py": "retired with the patient cohort",
+    # Placement cannot affect an algebraic identity. This checks that rotating
+    # the head and recomputing the registration leaves the anatomical axis
+    # unchanged, and it holds to machine precision in whatever region the
+    # voxels are taken from, so re-sphering it would test the same equality
+    # against the same zero.
+    "anat_x_invariance.py": "verifies an identity to machine precision",
 }
 
 # Selecting voxels from the region mask, however the variable is spelled.

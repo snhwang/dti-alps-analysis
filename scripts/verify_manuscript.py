@@ -21,7 +21,14 @@ import pandas as pd
 from scipy import stats
 
 HERE = Path(__file__).resolve().parent
-TEX = (HERE.parent / "mri_revision.tex").read_text(encoding="utf-8")
+# The article and its supplementary file are both submitted, so both are
+# checked. Moving a section between them must not silently retire a check:
+# before this, relocating the rotation study to the supplement turned two
+# passing checks into failures even though the text had not changed a word.
+ARTICLE = (HERE.parent / "mri_revision.tex").read_text(encoding="utf-8")
+_supp = HERE.parent / "mri_supplement.tex"
+SUPPLEMENT = _supp.read_text(encoding="utf-8") if _supp.exists() else ""
+TEX = ARTICLE + "\n" + SUPPLEMENT
 sys.path.insert(0, str(HERE))
 from estimator_variants import variance_components
 
@@ -62,16 +69,14 @@ pitch = tol[(tol["mode"] == "pitch (x)") & (tol.method == "classic")]
 for col, want in (("tol_1pct", 4.0), ("tol_2pct", 6.3), ("tol_5pct", 11.0)):
     check(f"classic pitch tolerance {col}", want, float(pitch[col].iloc[0]), tol=0.03)
 
-# --- reliability, post hemisphere fix ---
-for tag, f, want_classic, want_slab in (
-        ("HCP-A", "decoupled_roi_hcpa_b1500.csv", 0.957, 0.950),
-        ("DLBS", "decoupled_roi_dlbs.csv", 0.594, 0.455)):
-    d = pd.read_csv(HERE / f)
-    lon = d[d.Subject_ID.isin(d.Subject_ID.value_counts()[lambda s: s >= 2].index)]
-    check(f"{tag} classic ICC", want_classic,
-          variance_components(lon.dropna(subset=["classic"]), "classic")["icc"], tol=0.01)
-    check(f"{tag} refined_slab ICC", want_slab,
-          variance_components(lon.dropna(subset=["refined_slab"]), "refined_slab")["icc"], tol=0.01)
+# The reliability checks that read decoupled_roi_*.csv were removed here. That
+# file is built by a script pinned to the warped masks, so it reported ICCs of
+# 0.957 and 0.594 while the manuscript, computed on the redrawn spheres, prints
+# 0.956 and 0.607. Both passed, because these checks compared the file against
+# hardcoded values rather than against the text, so the verifier and the article
+# were reading different sources without anything saying so. The canonical
+# reliability values are checked below against the index tables the manuscript
+# is actually generated from.
 
 # --- voxelwise measured axis, which is lambda2/lambda3 ---
 for tag, f, want_icc, want_age in (
@@ -131,18 +136,15 @@ check("combined head-in-bore pitch vs age", 0.428,
       float(stats.pearsonr(_sm.Age, (_sm.aff_pitch - _sm.slab_pitch).abs())[0]), tol=0.03)
 
 
-# --- Table 2's Refined+ row, which had been left as dashes while Section 4.5
-# reported values for it ---
-for _tag, _f, _icc, _age in (("HCP-A", "decoupled_roi_hcpa_b1500.csv", 0.950, -0.476),
-                             ("DLBS", "decoupled_roi_dlbs.csv", 0.455, -0.344)):
-    _d = pd.read_csv(HERE / _f)
-    _lon = _d[_d.Subject_ID.isin(_d.Subject_ID.value_counts()[lambda s: s >= 2].index)]
-    check(f"{_tag} Refined+ ICC", _icc,
-          variance_components(_lon.dropna(subset=["refinedplus_slab"]), "refinedplus_slab")["icc"],
-          tol=0.01)
-    _s = _d.dropna(subset=["Age", "refinedplus_slab"])
-    check(f"{_tag} Refined+ vs age", _age,
-          float(np.corrcoef(_s.Age, _s.refinedplus_slab)[0, 1]), tol=0.02)
+# The Refined+ checks were removed with the values they guarded. Table 2 now
+# shows dashes for that row, because its reliability and age association come
+# from a pipeline still pinned to the warped masks and mixing placements inside
+# one column would be worse than leaving it blank. Neither -0.476 nor -0.344
+# appears anywhere in the article, so there is nothing left to check. Refined+
+# survives as its departure under rotation and as the appendix subsection
+# answering R1.4, and the check below holds that subsection in place.
+check("the Refined+ subsection is still present for R1.4", 1.0,
+      float("A Voxelwise Variant (Refined+)" in TEX))
 
 
 # --- absorption using the header-derived pose, which atrophy cannot reach ---
@@ -1758,6 +1760,22 @@ _cr = _wl[(_wl.phenotype == 'CrystIQ_Tr35_60y') & (_wl.arm == 'everything')
           & (_wl.variant == 'cross')]
 check('crystallized IQ does not survive, as the text states', 1.0,
       float(len(_cr) and _cr.iloc[0].q > 0.05))
+
+# --- groups really do differ in head position ---
+# The paper argues the group case deductively: pitch can only lower the index,
+# so any comparison whose arms differ in posture is biased in a known direction.
+# That deduction needs one empirical premise, that real groups differ in pose,
+# and it is supplied by splitting DLBS at its median body mass index rather
+# than by rotating tensors numerically.
+_pg = pd.read_csv(HERE / 'pose_group_difference_dlbs.csv')
+_bmi = _pg[(_pg.phenotype == 'BMI_W1') & (_pg.pose == 'abs_pitch')]
+check('habitus groups differ in head pitch', 1.0,
+      float(len(_bmi) and _bmi.iloc[0].pose_diff_p < 0.001))
+check('the pose difference is stated in the Results', 1.0,
+      float('differs by $11.8^{' + chr(92) + 'circ}$ against $9.4^{'
+            + chr(92) + 'circ}$' in _flat))
+check('the group case is made as a deduction, not a simulation', 1.0,
+      float('carries a bias whose direction is known in advance' in _flat))
 
 # --- no body footnotes ---
 # Footnotes are not part of the elsarticle template's normal apparatus, and a
