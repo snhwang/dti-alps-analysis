@@ -57,14 +57,26 @@ def build(cohort: str) -> pd.DataFrame:
     # b=1500 file the rest of the paper uses.
     # DLBS is single-shell b=1000 and has no suffixed file; only HCP-A does.
     shell = os.environ.get("ALPS_TENSOR_SUFFIX", "") if cohort == "hcpa" else ""
-    res = pd.read_csv(HERE / f"decoupled_roi_{cohort}{shell}.csv")
+    # The canonical index table, not decoupled_roi. Two reasons. Its indices are
+    # the ones the manuscript reports, so a covariate adjustment computed here
+    # attaches to the coefficients printed elsewhere. And it now carries its own
+    # region voxel counts, so the region-volume term describes the regions the
+    # indices were actually measured in. Taking those counts from the sphere
+    # file instead would adjust for the size of the warped masks, which is not
+    # where any of these numbers come from any more.
+    res = pd.read_csv(HERE / ("measured_pvs_axis_hcpa_b1500_all.csv"
+                              if cohort == "hcpa" else
+                              "measured_pvs_axis_dlbs.csv"))
+    res["Subject_ID"] = res.Subject_ID.astype(str)
+    res["Visit"] = res.Visit.astype(str)
+    res = res.rename(columns={"cross": "refined_slab"})
     if cohort == "hcpa":
         src = pd.read_csv(DIFF / "HCP" / "hcpa_alps_spheres_5mm.csv")
         mot = pd.read_csv(DIFF / "HCP" / "hcpa_motion.csv")
         src = src.merge(mot[["Subject_ID", "Visit", "Eddy_Mean_RMS"]],
                         on=["Subject_ID", "Visit"], how="left")
         keep = ["Subject_ID", "Visit", "Sex", "site", "scanner",
-                "n_proj", "n_assoc", "Eddy_Mean_RMS"]
+                "Eddy_Mean_RMS"]
     else:
         src = pd.read_csv(DIFF / "DLBS" / "dlbs_alps_spheres_5mm.csv")
         mot = pd.read_csv(DIFF / "DLBS" / "dlbs_motion.csv")
@@ -74,10 +86,13 @@ def build(cohort: str) -> pd.DataFrame:
         src["site"] = "single"
         src["scanner"] = "single"
         keep = ["Subject_ID", "Visit", "Sex", "site", "scanner",
-                "n_proj", "n_assoc", "Eddy_Mean_RMS"]
+                "Eddy_Mean_RMS"]
+    src["Subject_ID"] = src.Subject_ID.astype(str)
+    src["Visit"] = src.Visit.astype(str)
     d = res.merge(src[keep], on=["Subject_ID", "Visit"], how="left")
     d["Age"] = parse_age(d["Age"])
-    d["nvox"] = pd.to_numeric(d.n_proj, errors="coerce") + pd.to_numeric(d.n_assoc, errors="coerce")
+    d["nvox"] = (pd.to_numeric(d.n_proj, errors="coerce")
+                 + pd.to_numeric(d.n_assoc, errors="coerce"))
     d["motion"] = pd.to_numeric(d.Eddy_Mean_RMS, errors="coerce")
     d["Sex"] = d["Sex"].astype(str).str.strip().str.upper().str[0]
     d = d[d.Sex.isin(["M", "F"])]
@@ -143,8 +158,14 @@ def main() -> None:
         if nsite > 1:
             models.append(("+ sex, motion, ROI volume, site",
                            "y_z ~ Age_z + C(Sex) + motion_z + nvox_z + C(site)"))
+            # Scanner, not site and scanner. Every scanner sits at exactly one
+            # site, so the site dummies are perfectly predicted by the scanner
+            # dummies and the design is singular. Fitting both returned a
+            # coefficient with a standard error of 1568 and p=0.9998, which is
+            # the collinearity showing rather than a null result. Scanner alone
+            # absorbs site, so this is the stricter of the two adjustments.
             models.append(("+ all, and scanner",
-                           "y_z ~ Age_z + C(Sex) + motion_z + nvox_z + C(site) + C(scanner)"))
+                           "y_z ~ Age_z + C(Sex) + motion_z + nvox_z + C(scanner)"))
 
         for col, nm in (("classic", "classic"), ("refined_slab", "refined")):
             say(f"\n{nm}:")

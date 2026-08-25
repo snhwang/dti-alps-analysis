@@ -42,6 +42,7 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import os
 import warnings
 from pathlib import Path
 
@@ -53,6 +54,10 @@ from data_paths import winpath
 import atomic_io  # noqa: F401  writes become atomic on import
 
 warnings.filterwarnings("ignore")
+# Radius of the native-space sphere drawn at each warped region centre,
+# matching the default in measured_pvs_axis. Zero restores the warped mask.
+SPHERE_MM = float(os.environ.get("ALPS_SPHERE_MM", "5"))
+
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -126,10 +131,29 @@ def extract() -> None:
                                               where=den != 0), 0, 1)
         xs = np.arange(mask.shape[0])[:, None, None] * np.ones_like(mask)
         mid = mask.shape[0] // 2
+
+        # The same placement rule measured_pvs_axis applies. Without it this
+        # comparison would measure the reoriented and closed-form indices
+        # inside the warped mask while every index it is compared against was
+        # measured inside a redrawn sphere, so the contrast would carry a
+        # placement difference as well as a correction difference.
+        ii, jj, kk = np.indices(mask.shape)
+        aff = nib.load(str(mask_p)).affine
+        xw = aff[0, 0] * ii + aff[0, 1] * jj + aff[0, 2] * kk + aff[0, 3]
+        yw = aff[1, 0] * ii + aff[1, 1] * jj + aff[1, 2] * kk + aff[1, 3]
+        zw = aff[2, 0] * ii + aff[2, 1] * jj + aff[2, 2] * kk + aff[2, 3]
+
+        def resphere(sel_mask, radius):
+            if radius <= 0 or not sel_mask.any():
+                return sel_mask
+            cx, cy, cz = xw[sel_mask].mean(), yw[sel_mask].mean(), zw[sel_mask].mean()
+            d2 = (xw - cx) ** 2 + (yw - cy) ** 2 + (zw - cz) ** 2
+            return d2 <= radius ** 2
+
         blocks = {"R": R}
         for label, code in (("proj", 1), ("assoc", 2)):
             for hemi, sel in (("L", xs < mid), ("R", xs >= mid)):
-                m = (mask == code) & sel & (fa >= 0.2)
+                m = resphere((mask == code) & sel, SPHERE_MM) & (fa >= 0.2)
                 v1 = evecs[m][:, :, 0]
                 n = np.linalg.norm(v1, axis=1, keepdims=True)
                 n[n == 0] = 1

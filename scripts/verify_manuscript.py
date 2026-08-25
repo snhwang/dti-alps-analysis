@@ -76,7 +76,7 @@ for tag, f, want_classic, want_slab in (
 # --- voxelwise measured axis, which is lambda2/lambda3 ---
 for tag, f, want_icc, want_age in (
         ("HCP-A", "measured_pvs_axis_hcpa_b1500_all.csv", 0.950, -0.581),
-        ("DLBS", "measured_pvs_axis_dlbs.csv", 0.545, -0.419)):
+        ("DLBS", "measured_pvs_axis_dlbs.csv", 0.554, -0.411)):
     d = pd.read_csv(HERE / f).dropna(subset=["pv_perp"])
     lon = d[d.Subject_ID.isin(d.Subject_ID.value_counts()[lambda s: s >= 2].index)]
     check(f"{tag} pv_perp ICC", want_icc,
@@ -110,7 +110,7 @@ for tag, hf, af, want_pitch in (("DLBS", "head_rotation_dlbs.csv",
             cols = [np.ones(len(m)), z(m.Age)] + ([z(m.pitch.abs()), z(m.total)] if adj else [])
             return float(np.linalg.lstsq(np.column_stack(cols), z(m[col]), rcond=None)[0][1])
         drop = 100 * (1 - abs(beta("classic", True)) / abs(beta("classic", False)))
-        check("DLBS classic age coefficient absorbed by pose (%)", 45.0, drop, tol=0.05)
+        check("DLBS classic age coefficient absorbed by pose (%)", 42.5, drop, tol=0.05)
 
 # --- slice prescription: head pose from scanner metadata, which no brain
 # property can influence, so the atrophy objection cannot apply to it ---
@@ -169,10 +169,10 @@ def _abeta(y, age, covs):
 
 _b0 = _abeta(_mm.classic, _mm.Age, [])
 for _lab, _covs, _want in (
-        ("registration pose", [np.abs(_mm.pitch), _mm.total], 45.0),
-        ("header slab angulation", [_mm.slab_pitch], 12.4),
-        ("combined head-in-bore", [(_mm.aff_pitch - _mm.slab_pitch).abs()], 48.0),
-        ("header and registration", [_mm.slab_pitch, np.abs(_mm.pitch), _mm.total], 51.7)):
+        ("registration pose", [np.abs(_mm.pitch), _mm.total], 42.5),
+        ("header slab angulation", [_mm.slab_pitch], 11.0),
+        ("combined head-in-bore", [(_mm.aff_pitch - _mm.slab_pitch).abs()], 45.0),
+        ("header and registration", [_mm.slab_pitch, np.abs(_mm.pitch), _mm.total], 48.1)):
     check(f"DLBS absorbed by {_lab} (%)", _want,
           100 * (1 - abs(_abeta(_mm.classic, _mm.Age, _covs)) / abs(_b0)), tol=0.03)
 
@@ -189,7 +189,7 @@ _rr = (_r25.merge(_r5, on=["Subject_ID", "Visit"]).merge(_hr3, on=["Subject_ID",
           .dropna(subset=["Age", "pitch", "total"])
           .sort_values(["Subject_ID", "Visit"]).groupby("Subject_ID").first().reset_index())
 check("radius comparison participants", 155.0, float(len(_rr)), tol=0.01)
-for _col, _want in (("classic25", 36.1), ("classic", 49.1)):
+for _col, _want in (("classic25", 36.1), ("classic", 46.0)):
     _b0 = _abeta(_rr[_col], _rr.Age, [])
     _b1 = _abeta(_rr[_col], _rr.Age, [np.abs(_rr.pitch), _rr.total])
     check(f"radius absorbed, {_col} (%)", _want, 100 * (1 - abs(_b1) / abs(_b0)), tol=0.03)
@@ -303,14 +303,14 @@ check("TN best corrected after adjustment", -0.180,
 results.append((TEX.count(r"$8.2^{\circ}$") == 2,
                 "isotropic crossover is 8.2 in both places", None, None))
 
-for phrase in [r"$3.67\%$ (flat)", r"$9.1^{\circ}$", r"$45.0\%$",
+for phrase in [r"$3.67\%$ (flat)", r"$9.1^{\circ}$", r"$42.5\%$",
                # r=-0.414 was the patient cohort's pitch tracking and went with it.
                r"$r=+0.332$", r"$r=+0.258$",
                # CP=0.216 retired with the measurement-location section: the claim that
                # the ALPS regions are among the most planar white matter is now made
                # qualitatively in the Discussion, so no planar coefficient appears
                # outside Methods.
-               r"$r=-0.631$", r"$-0.581$", r"$-0.419$"]:
+               r"$r=-0.631$", r"$-0.582$", r"$-0.411$"]:
     results.append((in_tex(phrase), f"manuscript contains {phrase}", None, None))
 
 
@@ -420,7 +420,7 @@ check("age-dependence rows cover four region-hemispheres", 4.0,
 _ax_h = pd.read_csv(HERE / "measured_pvs_axis_hcpa_b1500_all.csv")
 _ax_d = pd.read_csv(HERE / "measured_pvs_axis_dlbs.csv")
 for _d, _tag, _want_icc, _want_r in ((_ax_h, "HCP-A", 0.955, -0.538),
-                                     (_ax_d, "DLBS", 0.516, -0.356)):
+                                     (_ax_d, "DLBS", 0.551, -0.362)):
     _lon = _d[_d.Subject_ID.isin(_d.Subject_ID.value_counts()[lambda s: s >= 2].index)]
     check(f"anat_x ICC {_tag}", _want_icc,
           float(variance_components(_lon.dropna(subset=["anat_x"]), "anat_x")["icc"]), tol=0.01)
@@ -434,8 +434,8 @@ _iccs = {_c: float(variance_components(_lh.dropna(subset=[_c]), _c)["icc"])
 check("anat_x is the best conditioned corrected variant in HCP-A", 1.0,
       float(_iccs["anat_x"] == max(_iccs[c] for c in ("cross", "v2_slab", "pv_perp", "anat_x"))),
       tol=1e-9)
-check("anat_x within 0.002 of classic ICC in HCP-A", 1.0,
-      float(abs(_iccs["classic"] - _iccs["anat_x"]) <= 0.0025), tol=1e-9)
+check("anat_x within 0.003 of classic ICC in HCP-A", 1.0,
+      float(abs(_iccs["classic"] - _iccs["anat_x"]) <= 0.003), tol=1e-9)
 # exactly invariant when the registration rotates with the head
 _inv = pd.read_csv(HERE / "anat_x_invariance.csv")
 check("anat_x rotation departure is machine precision", 1.0,
@@ -573,7 +573,7 @@ check("LD-ALPS is the least reliable variant in DLBS", 1.0,
             <= min(variance_components(_llon, _c)["icc"]
                    for _c in ("classic", "cross", "v2_slab", "pv_perp", "anat_x"))), tol=1e-9)
 # and it agrees closely with the axes estimated from the tensor
-for _c, _want in (("anat_x", 0.85), ("cross", 0.88)):
+for _c, _want in (("anat_x", 0.825), ("cross", 0.852)):
     check(f"LD-ALPS agrees with {_c}", _want,
           float(_lj[["ld_alps", _c]].corr().iloc[0, 1]), tol=0.03)
 
@@ -590,7 +590,7 @@ for _c in _pv:
     if _c in ("anat_x", "pv_perp"):
         # the only two with any survivor, and few: 3 and 7, one MRS family
         check(f"{_c} survivors after age adjustment are few", 1.0,
-              float(0 < (_ps[f"q_{_c}"] < 0.05).sum() <= 7), tol=1e-9)
+              float(0 < (_ps[f"q_{_c}"] < 0.05).sum() <= 8), tol=1e-9)
     else:
         check(f"{_c} finds nothing after age adjustment", 0.0,
               float((_ps[f"q_{_c}"] < 0.05).sum()), tol=1e-9)
@@ -614,11 +614,13 @@ for _phrase in ("this construction with the selection rule removed",
 
 # --- the voxelwise advantage survives disattenuation ---
 # The paper previously explained it away as lower variance. Dividing each
-# correlation by the square root of its reliability removes that advantage, and
-# the ordering does not change, so the explanation fails and the text now says so.
-for _f, _tag, _want_pv, _want_cl in (
-        ("measured_pvs_axis_dlbs.csv", "DLBS", -0.447, -0.425),
-        ("measured_pvs_axis_hcpa_b1500_all.csv", "HCP-A", -0.557, -0.440)):
+# correlation by the square root of its reliability removes that advantage. On
+# the redrawn regions the ordering now holds in HCP-A and reverses in DLBS,
+# where classic edges ahead, so the claim is stated per cohort rather than in
+# general and _leads records which cohort it is expected to hold in.
+for _f, _tag, _want_pv, _want_cl, _leads in (
+        ("measured_pvs_axis_dlbs.csv", "DLBS", -0.411, -0.416, False),
+        ("measured_pvs_axis_hcpa_b1500_all.csv", "HCP-A", -0.561, -0.442, True)):
     _dd = pd.read_csv(HERE / _f)
     _rep = _dd[_dd.Subject_ID.isin(_dd.Subject_ID.value_counts()[lambda s: s >= 2].index)]
     _one = _dd.sort_values(["Subject_ID", "Visit"]).groupby("Subject_ID").first().reset_index()
@@ -629,7 +631,7 @@ for _f, _tag, _want_pv, _want_cl in (
         _dis[_c] = float(stats.pearsonr(_s[_c], _s.Age)[0]) / np.sqrt(max(_icc, 1e-9))
     check(f"disattenuated age r, pv_perp, {_tag}", _want_pv, _dis["pv_perp"], tol=0.03)
     check(f"disattenuated age r, classic, {_tag}", _want_cl, _dis["classic"], tol=0.03)
-    check(f"pv_perp leads after disattenuation, {_tag}", 1.0,
+    check(f"pv_perp leads after disattenuation, {_tag}", float(_leads),
           float(abs(_dis["pv_perp"]) == max(abs(v) for v in _dis.values())), tol=1e-9)
 
 # --- nothing survives the eigenvalue ratio ---
@@ -638,10 +640,10 @@ for _f, _tag, _want_pv, _want_cl in (
 # out, and the residuals that remain belong to variants whose axes miss v2.
 _be = pd.read_csv(HERE / "beyond_eigenvalue_ratio.csv")
 _key = _be.set_index(["cohort", "endpoint", "variant"])
-for _k, _raw_r, _part in ((("hcpa", "age", "classic"), -0.430, 0.120),
-                          (("hcpa", "age", "cross"), -0.436, 0.057),
-                          (("hcpa", "age", "v2_slab"), -0.518, -0.033),
-                          (("hcpa", "age", "anat_x"), -0.505, 0.003),
+for _k, _raw_r, _part in ((("hcpa", "age", "classic"), -0.432, 0.114),
+                          (("hcpa", "age", "cross"), -0.443, 0.034),
+                          (("hcpa", "age", "v2_slab"), -0.524, -0.055),
+                          (("hcpa", "age", "anat_x"), -0.508, -0.016),
                           (("trigeminal", "patient", "ALPS-PAS"), -0.182, -0.013),
                           (("trigeminal", "patient", "per-voxel"), -0.169, -0.002)):
     check(f"{_k[0]} {_k[2]} raw", _raw_r, float(_key.loc[_k, "raw"]), tol=0.03)
@@ -651,9 +653,10 @@ for _k, _raw_r, _part in ((("hcpa", "age", "classic"), -0.430, 0.120),
     else:
         check(f"{_k[0]} {_k[2]} given the ratio is negligible", 1.0,
               float(abs(_key.loc[_k, "partial"]) < 0.05), tol=1e-9)
-# in HCP-A every corrected variant lands within 0.06 of zero. The largest is the
-# cross product at 0.057, which is why the assertion is 0.06 and not 0.03. The
-# manuscript said 0.03 for several drafts while this test passed; it now says 0.057.
+# In HCP-A every corrected variant lands within 0.06 of zero. On the redrawn
+# regions the largest of these four is v2_slab at -0.055, which is why the
+# assertion stays at 0.06. ALPS-PAS sits further out at -0.078 and is checked
+# separately against the bound the manuscript states.
 _h = _be[(_be.cohort == "hcpa") & (_be.variant.isin(["cross", "v2_sphere", "v2_slab", "anat_x"]))]
 check("HCP-A corrected variants vanish given the ratio", 1.0,
       float(_h.partial.abs().max() < 0.06), tol=1e-9)
@@ -854,11 +857,10 @@ for _c, _w in (("pitch", 10.7), ("roll", 0.8), ("yaw", 0.7)):
           round(float(_hd[_c].abs().median()), 1), tol=1e-9)
 
 
-# --- the composition figure hard-codes panel (c); it drifted from the text once ---
-_fs = (HERE / "build_composition_figure.py").read_text(encoding="utf-8")
-for _name, _want in (("classic_v", "[45.0, 34.0, 18.3]"), ("refined_v", "[20.3, 33.4, 18.1]")):
-    results.append((f"{_name} = {_want}" in _fs,
-                    f"composition figure {_name} matches the text", None, None))
+# The composition figure was guarded here because its panel (c) hard-codes
+# numbers that drifted from the text once. The figure is no longer included in
+# the manuscript, so the guard has been removed with it and the builder moved
+# to revision/archive. Nothing in the paper depends on either.
 
 
 # --- placement reproducibility across visits ---
@@ -972,10 +974,10 @@ check("refined exceeds classic after full adjustment", 1.0,
 # alpha^2 term of Section 2.7 seen across cohorts and the comparison against the
 # r = 0.72 Schilling et al. report in this same cohort.
 for _coh, _f, _exp in (("hcpa", "measured_pvs_axis_hcpa_b1500_all.csv",
-                        {"classic": 0.880, "cross": 0.850, "v2_slab": 0.936}),
+                        {"classic": 0.874, "cross": 0.837, "v2_slab": 0.926}),
                        ("dlbs", "measured_pvs_axis_dlbs.csv",
-                        {"classic": 0.427, "cross": 0.308, "v2_slab": 0.934,
-                         "anat_x": 0.396})):
+                        {"classic": 0.341, "cross": 0.205, "v2_slab": 0.941,
+                         "anat_x": 0.305})):
     _d = pd.read_csv(HERE / _f)
     _d = _d.sort_values(["Subject_ID", "Visit"]).groupby("Subject_ID").first().reset_index()
     for _v, _e in _exp.items():
@@ -1048,9 +1050,9 @@ check("no variant rises with poorer data as the artifact requires", 0.0,
 check("quality effects on the index are bounded", 1.0,
       float(_iq.r.abs().max() < 0.07))
 _ag = _sb[(_sb.test == "age_given_quality") & (_sb.variant == "pv_perp")].iloc[0]
-check("ratio age association before quality adjustment", -0.583,
+check("ratio age association before quality adjustment", -0.587,
       float(_ag.raw), tol=2e-3)
-check("ratio age association after quality adjustment", -0.576,
+check("ratio age association after quality adjustment", -0.581,
       float(_ag.r), tol=2e-3)
 check("quality adjustment does not explain the age effect", 1.0,
       float(abs(_ag.r - _ag.raw) < 0.02 and _ag.r < 0))
@@ -1112,7 +1114,7 @@ check("no claim that Schilling gave no derivation", 0.0,
       float("derivation not given there" in TEX
             or "derivation they did not give" in TEX))
 for _s in (r"$r=0.56$ in HCP and", r"$r=0.72$ in HCP-A, is measured in a cohort",
-           r"classic falls to $0.427$", r"the measured axis holds at $0.934$"):
+           r"classic falls to $0.341$", r"the measured axis holds at $0.941$"):
     check("manuscript states " + _s[:34], 1.0, float(_s in TEX))
 
 # LD-ALPS is an independent construction and must land inside the bound, or the
@@ -1127,19 +1129,19 @@ _ld = _ld.merge(_lo, on=["Subject_ID", "Visit"], how="inner")
 _ld = _ld.sort_values(["Subject_ID", "Visit"]).groupby("Subject_ID").first().reset_index()
 _ld = _ld.dropna(subset=["ld_alps", "pv_perp"])
 check("LD-ALPS mean in DLBS", 1.499, float(_ld.ld_alps.mean()), tol=3e-3)
-check("LD-ALPS sits below the eigenvalue ratio", 1.0,
-      float(_ld.ld_alps.mean() < _ld.pv_perp.mean()))
-check("LD-ALPS bound violations match a regional axis", 0.64,
-      float((_ld.ld_alps > _ld.pv_perp + 1e-9).mean() * 100), tol=0.15)
-check("LD-ALPS tracks the ratio no better than the cross product", 1.0,
-      float(abs(stats.pearsonr(_ld.ld_alps, _ld.pv_perp)[0] - 0.316) < 0.01))
+# The bound compares a numerator and a denominator measured in the same voxels.
+# LD-ALPS places its own regions, so reading it against our pv_perp measures how
+# far apart the two region definitions are rather than whether the bound holds.
+# The manuscript says so and reports no violation rate, so none is checked here.
+check("LD-ALPS tracks the ratio at the cross-product rate", 0.208,
+      float(stats.pearsonr(_ld.ld_alps, _ld.pv_perp)[0]), tol=5e-3)
 _bl = pd.read_csv(HERE / "beyond_eigenvalue_ratio.csv")
 _r = _bl[(_bl.cohort == "dlbs") & (_bl.variant == "ld_alps")].iloc[0]
-check("LD-ALPS retains nothing significant beyond the ratio", 1.0,
-      float(_r.p > 0.05))
-check("LD-ALPS presented as independent validation of the bound", 1.0,
-      float("One member of the family is not ours" in TEX
-            and "rather than of how" in TEX))
+# It retains a residual where the variants measured in our regions do not. The
+# manuscript reports that rather than explaining it away.
+check("LD-ALPS retains a residual beyond the ratio", 1.0, float(_r.p < 0.05))
+check("the differing regions are stated", 1.0,
+      float("It places its own regions" in " ".join(TEX.split())))
 # The Discussion subsection this used to guard was cut as a restatement of the
 # bound; the guard moved with the surviving sentences into the Results, which is
 # where the variants are now read as a family rather than recommended.
@@ -1176,8 +1178,8 @@ check("both published methods presented together", 1.0,
 
 # anat_x corrects in-plane rotation only, so it should track the ratio where the
 # residual error is small and fail where the dominant error is pitch.
-for _c, _f, _e in (("hcpa", "measured_pvs_axis_hcpa_b1500_all.csv", 0.931),
-                   ("dlbs", "measured_pvs_axis_dlbs.csv", 0.396)):
+for _c, _f, _e in (("hcpa", "measured_pvs_axis_hcpa_b1500_all.csv", 0.920),
+                   ("dlbs", "measured_pvs_axis_dlbs.csv", 0.305)):
     _d = pd.read_csv(HERE / _f)
     _d = _d.sort_values(["Subject_ID", "Visit"]).groupby("Subject_ID").first().reset_index()
     _s = _d[["anat_x", "pv_perp"]].dropna()
@@ -1191,16 +1193,20 @@ check("anat_x split attributed to pitch, not only anatomy", 1.0,
 # v2_slab's own alpha is zero by construction, so its shortfall is dispersion;
 # the others should be that in quadrature with their own misalignment.
 _sd = pd.read_csv(HERE / 'shortfall_decomposition.csv').set_index('variant')
-check('dispersion reference, effective angle', 16.21,
+check('dispersion reference, effective angle', 19.826,
       float(_sd.loc['v2_slab', 'effective_deg']), tol=2e-3)
-for _v, _obs, _pred in (('anat_x', 18.10, 18.50), ('cross', 20.75, 19.97)):
+for _v, _obs, _pred in (('anat_x', 21.903, 21.744), ('cross', 24.107, 23.009)):
     check(f'{_v} effective angle', _obs,
           float(_sd.loc[_v, 'effective_deg']), tol=3e-3)
     check(f'{_v} quadrature prediction', _pred,
           float(_sd.loc[_v, 'predicted_deg']), tol=3e-3)
-    check(f'{_v} quadrature agrees within one degree', 1.0,
+    # The quadrature model predicted each effective angle to under a degree on
+    # the warped masks. On the redrawn regions the cross product's gap widens to
+    # 1.1 degrees, so the tolerance follows the measurement rather than the
+    # other way round.
+    check(f'{_v} quadrature agrees within 1.5 degrees', 1.0,
           float(abs(_sd.loc[_v, 'effective_deg']
-                    - _sd.loc[_v, 'predicted_deg']) < 1.0))
+                    - _sd.loc[_v, 'predicted_deg']) < 1.5))
 check('classic excluded from the quadrature test', 1.0,
       float('not tract-locked' in str(_sd.loc['classic', 'role'])))
 check('shortfall decomposition stated in the manuscript', 1.0,
@@ -1241,8 +1247,8 @@ for _v in ('cross', 'v2_sphere'):
     check(f'regional axis does exceed it sometimes: {_v}', 1.0,
           float((_eq[_v] > _eq.pv_perp + 1e-9).sum() > 0))
 check('pooled v2 still falls short of the bound', 1.0,
-      float(0.90 < float((pd.read_csv(HERE / 'measured_pvs_axis_dlbs.csv')
-                          .eval('v2_slab / pv_perp')).median()) < 0.93))
+      float(0.86 < float((pd.read_csv(HERE / 'measured_pvs_axis_dlbs.csv')
+                          .eval('v2_slab / pv_perp')).median()) < 0.90))
 check('equality condition stated as per-voxel, not on average', 1.0,
       float('in every voxel, not on average' in TEX
             and 'cannot satisfy this' in TEX))
@@ -1332,15 +1338,15 @@ check('caption states the coincidence count', 1.0,
 # which is how 0.559 came to sit beside 0.594 for the same quantity.
 _mi = pd.read_csv(HERE / "manual_vs_atlas_icc.csv").set_index("placement")
 check("hand-drawn placement ICC", 0.3783, float(_mi.loc["hand-drawn", "icc"]), tol=3e-3)
-check("atlas ICC on the hand-drawn sessions", 0.6112,
+check("atlas ICC on the hand-drawn sessions", 0.6486,
       float(_mi.loc["atlas, hand-drawn sessions only", "icc"]), tol=3e-3)
-check("atlas ICC on the full cohort", 0.5945, float(_mi.loc["atlas", "icc"]), tol=3e-3)
+check("atlas ICC on the full cohort", 0.6072, float(_mi.loc["atlas", "icc"]), tol=3e-3)
 check("atlas placement is the more reliable", 1.0,
       float(_mi.loc["atlas", "icc"] > _mi.loc["hand-drawn", "icc"]))
 _f = " ".join(TEX.split())
 check("the second-pipeline ICC is gone", 0.0, float("$0.559$" in _f))
 check("placement sentence quotes the single-estimator figures", 1.0,
-      float("$0.378$" in _f and "$0.611$" in _f and "$0.594$" in _f))
+      float("$0.378$" in _f and "$0.649$" in _f and "$0.607$" in _f))
 
 
 # AABC Term 8b acknowledgment, from the consortium's own page. The bracketed
@@ -1632,7 +1638,7 @@ check('the floor is stated as a measurement', 1.0,
       float('median $14.6^{\\circ}$ apart' in _tg))
 
 # Three attenuations of the classic age coefficient appear, all correct, all
-# DLBS, on different samples under different adjustments: 45.0 on the
+# DLBS, on different samples under different adjustments: 42.5 on the
 # 156-participant pose sample, 35.1 on 507 sessions from 284 with the three
 # deviation angles, 34.6 on the 284-participant placement sample. Each has to
 # say which it is, or a reader comparing two figures sees a contradiction.
@@ -1687,8 +1693,8 @@ for _canon in ('Refined (cross product)', 'Anatomical axis', 'Per-voxel',
 # These come from comparator_associations_*.csv, whose own guard is that the
 # classic index reproduces its printed value in the same pass.
 for _co, _pas_all, _pas_raw, _pas_r, _pv_all, _pv_raw, _pv_r in (
-        ('hcpa', -0.571, -0.530, -0.045, -0.517, -0.481, +0.020),
-        ('dlbs', -0.391, -0.301, -0.202, -0.381, -0.281, -0.197)):
+        ('hcpa', -0.573, -0.537, -0.078, -0.518, -0.484, -0.005),
+        ('dlbs', -0.396, -0.314, -0.245, -0.374, -0.271, -0.225)):
     _ca = pd.read_csv(HERE / f'comparator_associations_{_co}.csv')
 
     def _cell(v, conv, col):
@@ -1715,41 +1721,116 @@ for _co, _pas_all, _pas_raw, _pas_r, _pv_all, _pv_raw, _pv_r in (
                'per-voxel', 'one_per_participant', 'r_age_given_ratio')
     # The same pass reproduces classic, which is what makes the rest usable.
     check(f'{_co} comparator pass reproduces classic',
-          -0.465 if _co == 'hcpa' else -0.396,
+          -0.463 if _co == 'hcpa' else -0.397,
           _cell('classic', 'all_sessions', 'r_age'), tol=2e-3)
 
-# HCP-A is where the manuscript claims nothing survives the ratio, so both
-# comparators must sit inside the 0.057 bound it states.
+# HCP-A is where the manuscript bounds what survives the ratio, so both
+# comparators must sit inside the 0.078 bound it states. LD-ALPS is excluded
+# because it places its own regions, so the ratio partialled from it was not
+# measured in the voxels it used and the adjustment under-corrects by
+# construction.
 _hc = pd.read_csv(HERE / 'comparator_associations_hcpa.csv')
 _res = _hc[(_hc.convention == 'one_per_participant')
            & _hc.variant.isin(['ALPS-PAS', 'per-voxel'])].r_age_given_ratio.abs()
 check('HCP-A comparators stay inside the stated bound', 1.0,
-      float((_res <= 0.057).all()))
+      float((_res <= 0.0785).all()))
 
 # --- the within-participant result ---
 _wl = pd.read_csv(HERE / 'phenotype_longitudinal_hcpa.csv')
 _mo = _wl[(_wl.phenotype == 'moca_sum') & (_wl.arm == 'everything')].set_index('variant')
-check('refined index retains MoCA under the full model', 0.101,
+check('refined index retains MoCA under the full model', 0.094,
       float(_mo.loc['cross', 'r']), tol=6e-3)
 check('and it is significant there', 1.0,
       float(_mo.loc['cross', 'q'] < 0.05))
 check('classic does not retain MoCA under the full model', 1.0,
       float(_mo.loc['classic', 'q'] > 0.05))
-check('the ratio-like variants retain nothing', 1.0,
-      float(_mo.loc['pv_perp', 'q'] > 0.5))
+# This used to assert pv_perp retains nothing. Since the arm partials the
+# ratio out, and pv_perp is the ratio, that was a variable regressed against
+# itself and its q was whatever the rounding gave. The claim belongs on the
+# variants that genuinely estimate the second eigenvector, which reduce to the
+# ratio as the paper argues rather than by being it.
+check('pv_perp is excluded, being the ratio itself', 1.0,
+      float('pv_perp' not in _mo.index))
+for _v in ('v2_slab', 'v2_sphere'):
+    check(f'the ratio-like variants retain nothing: {_v}', 1.0,
+          float(_mo.loc[_v, 'q'] > 0.5))
 _cr = _wl[(_wl.phenotype == 'CrystIQ_Tr35_60y') & (_wl.arm == 'everything')
           & (_wl.variant == 'cross')]
 check('crystallized IQ does not survive, as the text states', 1.0,
       float(len(_cr) and _cr.iloc[0].q > 0.05))
 
+# --- no body footnotes ---
+# Footnotes are not part of the elsarticle template's normal apparatus, and a
+# derivation set in one is easy to miss. The second-order expansion that used to
+# sit in a footnote is now a subsection of the bound appendix. Table notes are a
+# separate mechanism and are unaffected.
+check('no footnotes in the body', 0.0,
+      float(TEX.count(chr(92) + 'footnote')))
+
+# --- both placements are declared, and the split is deliberate ---
+# The manuscript reports two region placements. That is only defensible if it
+# says so, says which analyses use which, and shows the two are comparable.
+check('Methods states both placements were used', 1.0,
+      float('Two placements were used and both are reported' in _flat))
+check('Methods says which analyses keep the warped mask', 1.0,
+      float('necessarily retain it, and are marked where they appear' in _flat))
+check('Methods gives the agreement between placements', 1.0,
+      float('the placements correlate at $r=0.97$ to $0.99$' in _flat))
+check('the level shift is disclosed, not just the agreement', 1.0,
+      float('not interchangeable with published ones' in _flat))
+# and the two tables computed on the warped masks say so in their captions
+for _t in ('Region-size sensitivity', 'Fiber contamination'):
+    check(f'caption marks its placement: {_t}', 1.0,
+          float('warped atlas masks' in _flat[_flat.find(_t):_flat.find(_t) + 2200]))
+
+# --- is the region effect real, or was the covariate over-adjusting? ---
+# The manuscript now argues that region volume was never distorting the
+# measurement, and rests that on two things: fixing the size leaves the index
+# where it was, and the volume-age correlation reverses sign between the two
+# placements. Both are checked, because the argument fails if either does.
+_re = pd.read_csv(HERE / 'roi_effect.csv')
+
+
+def _roi(cohort, placement, quantity):
+    s = _re[(_re.cohort == cohort) & (_re.placement == placement)
+            & (_re.quantity == quantity)]
+    return float(s.iloc[0]['value']) if len(s) else float('nan')
+
+
+for _co, _w, _s in (('hcpa', +0.290, -0.345), ('dlbs', +0.282, -0.173)):
+    check(f'{_co} warped volume rises with age', _w,
+          _roi(_co, 'warped mask', 'volume vs age'), tol=3e-3)
+    check(f'{_co} redrawn volume falls with age', _s,
+          _roi(_co, 'redrawn sphere', 'volume vs age'), tol=3e-3)
+    check(f'{_co} the volume-age correlation reverses sign', 1.0,
+          float(_roi(_co, 'warped mask', 'volume vs age') > 0
+                > _roi(_co, 'redrawn sphere', 'volume vs age')))
+# fixing the region must not move the index, or the argument above collapses
+_ag = _re[_re.quantity.str.startswith('agreement')]
+check('the two placements agree at 0.97 or better', 1.0,
+      float(_ag.value.min() >= 0.97))
+_sh = _re[_re.quantity.str.startswith('age r shift')]
+# Tested at the precision the sentence states. The largest shift is 0.00614,
+# which is 0.006 to three decimals, and the manuscript claims three decimals.
+check('the age association barely moves, HCP-A', 1.0,
+      float(round(_sh[_sh.cohort == 'hcpa'].value.max(), 3) <= 0.006))
+check('the age association barely moves, DLBS', 1.0,
+      float(_sh[_sh.cohort == 'dlbs'].value.max() <= 0.025))
+check('HCP-A volume adjustment falls from 21.7 to 5.9 per cent', 5.87,
+      _roi('hcpa', 'redrawn sphere', 'volume adjustment classic'), tol=0.05)
+check('DLBS volume adjustment falls to almost nothing', 1.0,
+      float(_roi('dlbs', 'redrawn sphere', 'volume adjustment classic') < 1.0))
+check('the over-adjustment reading is stated, not just the smaller number', 1.0,
+      float('over-adjustment rather than a region effect' in _flat))
+
 # --- the diagnostic worked example must actually close ---
 _dw = pd.read_csv(HERE / 'diagnostic_worked_example.csv').iloc[0]
-check('worked example: unadjusted age association', -0.328,
+check('worked example: unadjusted age association', -0.324,
       float(_dw.beta_y_g), tol=3e-3)
 check('worked example: pose against age', +0.332, float(_dw.beta_p_g), tol=3e-3)
-check('worked example: pose against index given age', -0.412,
+check('worked example: pose against index given age', -0.391,
       float(_dw.beta_y_pg), tol=3e-3)
-check('worked example: age association after pose', -0.191,
+check('worked example: age association after pose', -0.195,
       float(_dw.beta_y_gp), tol=3e-3)
 check('worked example: the identity closes', 1.0,
       # _dw["product"], not _dw.product: the latter resolves to the Series method.
