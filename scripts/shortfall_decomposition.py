@@ -37,8 +37,13 @@ import atomic_io  # noqa: F401  writes become atomic on import
 
 HERE = Path(__file__).resolve().parent
 # variant -> the measured angle between its axis and the second eigenvector
-MISALIGNED = {"anat_x": "v2_to_x", "cross": "v2_to_cross"}
-REFERENCE = "v2_slab"
+# The misalignment angles must be measured against whichever axis is the
+# reference, since that is the direction the quadrature model treats as
+# systematically correct.
+MISALIGNED_BY_REF = {
+    "v2_slab": {"anat_x": "v2_to_x", "cross": "v2_to_cross"},
+    "v2_sphere": {"anat_x": "v2sph_to_x", "cross": "v2sph_to_cross"},
+}
 
 
 def attained(alpha_deg, rho):
@@ -54,8 +59,19 @@ def invert(frac, rho, grid=np.linspace(0, 45, 45001)):
 
 
 def main() -> None:
-    argparse.ArgumentParser().parse_args()
-    d = pd.read_csv(HERE / "measured_pvs_axis_dlbs.csv")
+    ap = argparse.ArgumentParser()
+    # v2_slab pools its axis over the tract band while the diffusivities come
+    # from the sphere, so its own alpha is not zero by construction. v2_sphere
+    # pools over exactly the measured voxels, which is the condition the
+    # reference role needs. The switch exists so the two can be compared.
+    ap.add_argument("--reference", choices=["v2_slab", "v2_sphere"],
+                    default="v2_slab")
+    ap.add_argument("--source", default="measured_pvs_axis_dlbs.csv")
+    ap.add_argument("--out", default="shortfall_decomposition.csv")
+    args = ap.parse_args()
+    REFERENCE = args.reference
+    MISALIGNED = MISALIGNED_BY_REF[REFERENCE]
+    d = pd.read_csv(HERE / args.source)
     rho = float(d.pv_perp.median())
     print(f"DLBS, {len(d)} sessions, median lambda2/lambda3 = {rho:.3f}\n")
 
@@ -94,7 +110,7 @@ def main() -> None:
         print(f"   {'classic':10s} {obs['classic']*100:8.1f}% {eff['classic']:9.2f}d"
               f"{'':10s}{'not tract-locked':>11s}")
 
-    pd.DataFrame(rows).to_csv(HERE / "shortfall_decomposition.csv", index=False)
+    pd.DataFrame(rows).to_csv(HERE / args.out, index=False)
 
     print("\n   What perfect tract directions would buy. If a variant's only remaining")
     print("   error were its own misalignment, with dispersion removed, it would reach")

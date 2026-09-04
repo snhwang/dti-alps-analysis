@@ -56,6 +56,11 @@ def ols_beta(y, Xcols):
     return float(beta[1])
 
 
+# The response letter quotes the absorbed fractions, so they need to survive
+# outside this script's stdout. Printing a number that a document then repeats
+# is how the two drift apart with nothing to notice.
+rows = []
+
 for name, fn in COHORTS:
     p = HERE / fn
     if not p.exists():
@@ -71,6 +76,10 @@ for name, fn in COHORTS:
         adj = ols_beta(d[c], [d["Age"]] + [d[k] for k in COMP])
         pct = 100 * (1 - adj / raw)
         print(f"{c:<16s} {raw:>9.3f} {adj:>13.3f} {pct:>9.1f}%")
+        rows.append(dict(cohort=name, index=c, n_sessions=len(d),
+                         n_participants=int(d.Subject_ID.nunique()),
+                         beta_age=raw, beta_age_adj=adj, pct_absorbed=pct))
+    pd.DataFrame(rows).to_csv(HERE / "composition_confound.csv", index=False)
 
     print("\n  composition measures against age")
     for k in COMP + ["slf_red"]:

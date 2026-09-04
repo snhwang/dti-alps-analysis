@@ -45,7 +45,7 @@ OUT = winpath("Q:/dti_output")
 SLAB_MM, FA_MIN = 8.0, 0.2
 # Radius of the native-space sphere drawn at each warped region centre,
 # matching the default in measured_pvs_axis. Zero restores the warped mask.
-SPHERE_MM = float(os.environ.get("ALPS_SPHERE_MM", "5"))
+SPHERE_MM = float(os.environ.get("ALPS_SPHERE_MM", "0"))
 SHELL = os.environ.get("ALPS_TENSOR_SUFFIX", "")
 
 

@@ -42,7 +42,7 @@ PREAMBLE = r"""\documentclass[3p]{elsarticle}
 
 \begin{center}
 {\Large\bfseries Supplementary material}\\[0.4em]
-{\large Head Position, DTI-ALPS, and Radial Anisotropy}
+{\large Head Position Confounds DTI-ALPS, While Its Correction Approaches Radial Anisotropy}
 \end{center}
 
 \vspace{1em}

@@ -78,8 +78,12 @@ def main() -> None:
 
     for cohort, stem in (("HCP-A", "measured_pvs_axis_hcpa_b1500_all"),
                          ("DLBS", "measured_pvs_axis_dlbs")):
+        # "new" is the canonical placement, whatever it currently is, and
+        # "old" is the superseded one. The pair was inverted when the warped
+        # mask became canonical again, so it is named by role rather than by
+        # placement and the detector keeps working in either direction.
         new = pd.read_csv(HERE / f"{stem}.csv")
-        old = pd.read_csv(HERE / f"{stem}_warpedmask.csv")
+        old = pd.read_csv(HERE / f"{stem}_sphere5.csv")
         for f in (new, old):
             f["Subject_ID"] = f.Subject_ID.astype(str)
             f["Visit"] = f.Visit.astype(str)
@@ -101,7 +105,7 @@ def main() -> None:
                     if not ctx:
                         continue
                     print(f"\n  STALE? {k}")
-                    print(f"     warped {so}  ->  re-sphered {sn}   ({len(ctx)} place(s))")
+                    print(f"     superseded {so}  ->  canonical {sn}   ({len(ctx)} place(s))")
                     for c in ctx[:2]:
                         print(f"     ...{c}...")
                     hits += 1

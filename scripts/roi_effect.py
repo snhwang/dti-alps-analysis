@@ -63,7 +63,7 @@ def partial(y, x, z):
 def load(cohort, warped):
     stem = ("measured_pvs_axis_hcpa_b1500_all" if cohort == "hcpa"
             else "measured_pvs_axis_dlbs")
-    d = pd.read_csv(HERE / f"{stem}{'_warpedmask' if warped else ''}.csv")
+    d = pd.read_csv(HERE / f"{stem}{'' if warped else '_sphere5'}.csv")
     d["Subject_ID"] = d.Subject_ID.astype(str)
     d["Visit"] = d.Visit.astype(str)
     if warped:

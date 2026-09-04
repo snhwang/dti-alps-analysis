@@ -13,8 +13,16 @@ principal eigenvector of the planarity-weighted dyadic sum of v2 over the
 region, v2 being per voxel the direction of greatest diffusivity in the plane
 perpendicular to the local fibre. Dyadic averaging is used because eigenvectors
 carry a sign ambiguity, and the weight is the Westin planar coefficient
-CP = (l2 - l3) / l1, which is how well defined v2 is in that voxel, exactly
-analogous to weighting v1 by CL.
+CP = (l2 - l3) / l1.
+
+CP is not the exact analogue of weighting v1 by CL. Eigenvector stability goes
+with the gap to the NEAREST eigenvalue. v1 has one relevant neighbour, l2, so
+CL is exactly right for it. v2 has two, l1 and l3, so the analogous weight is
+min(CL, CP): CP alone is blind to a closing l1-l2 gap, which frees v2 inside
+that eigenplane just as it frees v1. See v2_weight_gap.py, which measures how
+far apart the two weights place the pooled axis. The bias from using CP is to
+admit voxels with an ill-determined v2, which inflates the within-region
+dispersion this axis is used to estimate rather than shrinking it.
 
 This is rotation-invariant for the same reason the refined index is: v2 rotates
 with the tensor, so the averaged axis rotates with it and the ratio does not
@@ -74,18 +82,38 @@ SLAB_MM = 8.0
 # compared rather than assumed.
 FA_MIN = float(os.environ.get("ALPS_FA_MIN", "0.2"))
 # Radius in millimetres of the native-space sphere drawn at each warped
-# region's centre. This is the primary analysis, because warping the template
-# mask into native space leaves region size varying almost eightfold across
-# HCP-A, and a size that varies has to be adjusted for. Drawing the sphere
-# fresh at the warped centre holds size fixed instead, so the adjustment
-# becomes unnecessary rather than arguable.
+# region's centre. Zero, the default, keeps the warped mask itself, which is
+# the conventional region and the one the manuscript reports.
 #
-# Zero restores the warped mask, the behaviour of the first submission. It
-# writes to a _warpedmask name so the two can be compared and so neither run
-# can silently overwrite the other.
-SPHERE_MM = float(os.environ.get("ALPS_SPHERE_MM", "5"))
+# Redrawing the sphere was the primary analysis for part of this revision,
+# because warping leaves region size varying eightfold and that variation had
+# to be adjusted for. Testing it showed the adjustment was the error rather
+# than the variation: holding size fixed changes the index by r=0.97 to 0.99
+# and the age associations by at most 0.006, while the volume-age correlation
+# reverses sign between the two placements, +0.29 warped against -0.34 fixed.
+# The warped mask grows with the atrophy it is warped into, so adjusting for
+# its volume removes age variance through a registration pathway that never
+# reaches the measurement. With the adjustment dropped there is no reason to
+# leave the conventional region, and every reason to stay with it in a paper
+# asking what the published index measures.
+SPHERE_MM = float(os.environ.get("ALPS_SPHERE_MM", "0"))
+# "sphere" draws a fresh sphere at the warped centre, "erode" takes the same
+# volume from inside the warped mask. Both write suffixed filenames.
+PLACEMENT = os.environ.get("ALPS_PLACEMENT", "sphere")
+# Absolute voxel target for the erode placement, per hemisphere-region.
+ERODE_N = int(os.environ.get("ALPS_ERODE_N", "0"))
 VARIANTS = ["classic", "cross", "v2_sphere", "v2_slab", "pv_perp", "anat_x"]
 SHELL = os.environ.get("ALPS_TENSOR_SUFFIX", "")
+# Weight for pooling v2 into a regional axis. "cp" is the Westin planar
+# coefficient and what the manuscript reports. "gap" is min(CL, CP), which is
+# what the reliability rule in Methods actually gives, since v2 lies between
+# two neighbours and its stability is set by the smaller of the two gaps. The
+# switch exists so the difference can be measured on the reported quantities
+# rather than argued about: only v2_sphere and v2_slab depend on it, because
+# classic, cross and anat_x use no v2 axis and pv_perp uses no axis at all.
+# "gap" writes its own filenames so neither run overwrites the other.
+V2_WEIGHT = os.environ.get("ALPS_V2_WEIGHT", "cp")
+assert V2_WEIGHT in ("cp", "gap"), f"ALPS_V2_WEIGHT must be cp or gap, got {V2_WEIGHT}"
 
 
 def acute(u, v):
@@ -136,15 +164,22 @@ def main() -> None:
     # accumulate. A run of this length should not have to start over because
     # the machine was restarted near the end of it.
     suffix = "_all" if args.all_sessions else ""
+    if V2_WEIGHT != "cp":
+        suffix += f"_v2{V2_WEIGHT}"
+    # A subset run must never land on the production filename. Without this a
+    # --limit run silently replaces the full cohort's results with a fraction
+    # of them, and nothing downstream notices until a number moves.
+    if args.limit:
+        suffix += f"_limit{args.limit}"
     # The primary 5 mm sphere takes the plain name, since it is what the
     # manuscript reports and what every downstream script should read without
     # having to know about this option at all.
-    if SPHERE_MM == 5:
+    if not SPHERE_MM:
         _fx = ""
-    elif SPHERE_MM:
-        _fx = f"_sph{SPHERE_MM:g}"
+    elif PLACEMENT != "sphere":
+        _fx = f"_{PLACEMENT}{ERODE_N}" if ERODE_N else f"_{PLACEMENT}"
     else:
-        _fx = "_warpedmask"
+        _fx = f"_sphere{SPHERE_MM:g}"
     if FA_MIN != 0.2:
         _fx += f"_fa{FA_MIN:g}"
     outp = HERE / f"measured_pvs_axis_{args.cohort}{SHELL}{suffix}{_fx}.csv"
@@ -171,6 +206,8 @@ def main() -> None:
         l3 = np.take_along_axis(ev, srt[..., 2:3], -1)[..., 0]
         with np.errstate(divide="ignore", invalid="ignore"):
             CP = np.where(l1 > 0, (l2 - l3) / l1, 0.0)
+            CL = np.where(l1 > 0, (l1 - l2) / l1, 0.0)
+        V2W = CP if V2_WEIGHT == "cp" else np.minimum(CL, CP)
         md = ev.mean(-1)
         nu = np.sqrt(((ev - md[..., None]) ** 2).sum(-1))
         de = np.sqrt((ev ** 2).sum(-1))
@@ -200,12 +237,34 @@ def main() -> None:
             anisotropic voxels do not squash it. Selection is geometric and
             looks at no measured quantity, so unlike an FA-ranked rule it
             cannot introduce a dependence on age.
+
+            ALPS_PLACEMENT=erode keeps the same fixed size but takes it from
+            inside the warped mask, as the voxels nearest its centroid, rather
+            than drawing a fresh sphere. That was dismissed above for keeping
+            the distorted shape, which turns out to be the property that keeps
+            the region inside the tract: measured against the JHU labels, a
+            true 5 mm sphere puts 7 to 9 per cent of the association region
+            outside its label while the warped mask stays in, because the
+            inverse warp erodes it to about 60 per cent of nominal volume.
             """
             if radius <= 0 or not m.any():
                 return m
             cx, cy, cz = xw[m].mean(), yw[m].mean(), zw[m].mean()
             d2 = (xw - cx) ** 2 + (yw - cy) ** 2 + (zw - cz) ** 2
-            return d2 <= radius ** 2
+            if PLACEMENT != "erode":
+                return d2 <= radius ** 2
+            # Same target volume, taken from within the warped mask. If the
+            # mask is smaller than the target it is used whole, which is the
+            # honest behaviour: the region cannot be grown without leaving the
+            # tissue the mask identifies.
+            target = ERODE_N or int(np.count_nonzero(d2 <= radius ** 2))
+            idx = np.flatnonzero(m)
+            if idx.size <= target:
+                return m
+            order = np.argsort(d2.ravel()[idx])[:target]
+            out = np.zeros(m.shape, bool)
+            out.ravel()[idx[order]] = True
+            return out
 
         def evec(m, which):
             V = vc[m]; o = srt[m]
@@ -216,9 +275,17 @@ def main() -> None:
             return {"v1": evec(m, 0), "fa": fa[m], "evals": ev[m], "evecs": vc[m]}
 
         acc = {k: [] for k in VARIANTS}
+        # v2_to_* are measured against the slab axis, which is what the
+        # shortfall decomposition uses as its dispersion reference. The sphere
+        # axis is the one whose own alpha is actually zero by construction,
+        # since it is pooled over exactly the voxels the diffusivities come
+        # from, so the same angles are recorded against it and the two axes are
+        # compared directly. Without v2sph_to_*, the reference cannot be
+        # changed without rerunning this.
         ang = {k: [] for k in ("v2_to_x", "v2_to_cross", "cross_to_x",
                                "v2_proj_to_assoc", "v2_proj_to_cross",
-                               "v2_assoc_to_cross")}
+                               "v2_assoc_to_cross",
+                               "v2sph_to_x", "v2sph_to_cross", "sph_to_slab")}
         # regional eigenvalue means, so any normalization of the transverse
         # anisotropy can be formed downstream without returning to the images
         eig = {f"{e}_{r}": [] for e in ("l1", "l2", "l3")
@@ -230,8 +297,13 @@ def main() -> None:
         # which the sphere does not control, so the two differ and both are
         # worth carrying. Counts are per hemisphere, like every other quantity
         # here, since the record averages over the two.
+        # n_*_slab are the direction-estimation regions. Methods justifies using
+        # a larger region than the measurement one by directional error falling
+        # as n^-1/2, and without these the manuscript says "larger" three times
+        # without ever saying how much larger.
         cnt = {k: [] for k in ("n_proj", "n_assoc",
-                               "n_proj_geom", "n_assoc_geom")}
+                               "n_proj_geom", "n_assoc_geom",
+                               "n_proj_slab", "n_assoc_slab")}
         for hemi, side, scr, slf in (("L", xw < 0, 26, 42), ("R", xw > 0, 25, 41)):
             if SPHERE_MM:
                 mp_g = resphere((sph == 1) & side, SPHERE_MM)
@@ -257,7 +329,7 @@ def main() -> None:
 
             def v2_axis(masks):
                 v2 = np.vstack([evec(m, 1) for m in masks])
-                w = np.concatenate([CP[m] for m in masks])
+                w = np.concatenate([V2W[m] for m in masks])
                 ok = w > 0
                 if ok.sum() < 6:
                     return None
@@ -292,6 +364,8 @@ def main() -> None:
             cnt["n_assoc"].append(float(ma_s.sum()))
             cnt["n_proj_geom"].append(float(mp_g.sum()))
             cnt["n_assoc_geom"].append(float(ma_g.sum()))
+            cnt["n_proj_slab"].append(float(mp_l.sum()))
+            cnt["n_assoc_slab"].append(float(ma_l.sum()))
             acc["cross"].append(alps(p_cross))
             # Anatomical left-right, the same axis in both hemispheres, pulled
             # back from the template by the rotation of the subject-to-template
@@ -314,6 +388,13 @@ def main() -> None:
             ang["v2_to_x"].append(acute(p_slab, X))
             ang["v2_to_cross"].append(acute(p_slab, p_cross))
             ang["cross_to_x"].append(acute(p_cross, X))
+            ang["v2sph_to_x"].append(acute(p_sph, X))
+            ang["v2sph_to_cross"].append(acute(p_sph, p_cross))
+            # The offset between the two candidate reference axes. This is the
+            # term the slab reference carries and does not estimate, since its
+            # axis is pooled over the band while the diffusivities come from
+            # the sphere.
+            ang["sph_to_slab"].append(acute(p_sph, p_slab))
 
             # One axis has to serve both regions, and it attains the bound in
             # both only if v2 is the same direction in each and equals their

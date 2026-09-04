@@ -1,7 +1,8 @@
 # Analysis scripts
 
-Every script that produced a number, table or figure in *Head Position Confounds
-the DTI-ALPS Index in Aging and Disease*.
+Every script that produced a number, table or figure in *Head Position
+Confounds DTI-ALPS, While Its Correction Approaches Radial Anisotropy*
+(Magnetic Resonance Imaging, MAGRESIMAGING-D-26-00371).
 
 These are the working scripts, not a packaged tool. They are published so that
 any result in the paper can be traced to the code that made it. Expect to edit

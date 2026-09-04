@@ -68,7 +68,7 @@ SLAB_MM, FA_MIN = 8.0, 0.2
 # millimetres, matching the default in measured_pvs_axis. Zero restores the
 # warped mask of the first submission. Both files read the same variable, so
 # the placement rule cannot drift between the variants and the comparators.
-SPHERE_MM = float(os.environ.get("ALPS_SPHERE_MM", "5"))
+SPHERE_MM = float(os.environ.get("ALPS_SPHERE_MM", "0"))
 BANDS = (8.0, 12.0, 16.0)   # 8 mm was tuned on 1.5 mm data; 2 mm needs more
 VARIANTS = (["classic", "cross", "v2_sphere", "ALPS-PAS", "per-voxel", "pv_perp", "anat_x"]
             + [f"{k}_b{int(b)}" for b in BANDS for k in ("cross", "v2_slab")]

@@ -59,7 +59,7 @@ def repeats(d: pd.DataFrame) -> pd.DataFrame:
 def load(cohort: str, warped: bool) -> pd.DataFrame:
     stem = ("measured_pvs_axis_hcpa_b1500_all" if cohort == "hcpa"
             else "measured_pvs_axis_dlbs")
-    d = pd.read_csv(HERE / f"{stem}{'_warpedmask' if warped else ''}.csv")
+    d = pd.read_csv(HERE / f"{stem}{'' if warped else '_sphere5'}.csv")
     d["Subject_ID"] = d.Subject_ID.astype(str)
     d["Visit"] = d.Visit.astype(str)
     return d

@@ -11,6 +11,18 @@ which is self-reported. The table also carries actigraphy: total sleep time,
 sleep efficiency and wake after sleep onset. The DTI-ALPS literature rests
 heavily on sleep, so an objective measure is the fairer test of it.
 
+The adjustment set is age, sex, site and scan quality (head motion and the
+outlier-slice fraction), applied uniformly. Head pose is deliberately excluded,
+because whether pose adjustment changes an association is the paper's question
+rather than a nuisance to remove before asking it; ALPS_SWEEP_POSE=1 adds it for
+the comparison. Age is dropped when the endpoint is age itself.
+
+Site and quality were not in the first version of this sweep, which adjusted for
+age and sex alone. They are here because the same covariates are applied to the
+within-participant analysis, and reporting two designs under two different
+adjustment sets invites the reader to attribute a difference between them to the
+covariates rather than to the design.
+
 Age and sex are adjusted throughout. The unadjusted comparison was shown to be
 uninterpretable for choosing between variants, because a variant with a steeper
 age slope inherits an advantage on every age-related outcome without carrying
@@ -45,6 +57,7 @@ from hemisphere_age import williams
 
 HERE = Path(__file__).resolve().parent
 DIFF = HERE.parent.parent / "diffusion"
+MOTION = DIFF / "HCP" / "motion_rms_n1379.csv"
 AABC = DIFF / "HCP" / "AABC2_subjects_2026_02_05_14_29_11.csv"
 VARIANTS = ["classic", "cross", "v2_sphere", "v2_slab", "pv_perp", "anat_x"]
 MIN_N = 60
@@ -82,14 +95,29 @@ def main() -> None:
     # whichever visit they ran at, so joining on visit silently discarded any
     # measurement taken at a different visit from the diffusion session.
     ph = a.groupby("Subject_ID")[num].first().reset_index()
-    sx = a.groupby("Subject_ID")["sex"].first().reset_index()
+    sx = a.groupby("Subject_ID")[["sex", "site"]].first().reset_index()
     m = d.merge(ph, on="Subject_ID", how="inner").merge(sx, on="Subject_ID", how="left")
     m["sex_n"] = (m.sex.astype(str).str.upper().str[0] == "M").astype(float)
+
+    # scan quality, per subject-visit, and site as indicator columns
+    mot = pd.read_csv(MOTION)
+    mot["Subject_ID"] = mot.subject_id.astype(str)
+    mot = mot.groupby("Subject_ID")[["motion_rms", "pct_outliers"]].first().reset_index()
+    m = m.merge(mot, on="Subject_ID", how="left")
+    for _c in ("motion_rms", "pct_outliers"):
+        m[_c] = pd.to_numeric(m[_c], errors="coerce")
+        m[_c] = m[_c].fillna(m[_c].median())
+    _site = pd.get_dummies(m.site.astype(str), prefix="site", drop_first=True)
+    m = pd.concat([m, _site.astype(float)], axis=1)
+    SITE_COLS = list(_site.columns)
+    print(f"  adjusting for age, sex, {len(SITE_COLS)} site indicators, "
+          f"motion_rms and pct_outliers")
     print(f"{len(m)} participants merged; {len(num)} candidate phenotypes\n")
 
     rows = []
     for c in num:
-        s = m[[c, "Age", "sex_n"] + VARIANTS].copy()
+        s = m[[c, "Age", "sex_n", "motion_rms", "pct_outliers"]
+              + SITE_COLS + VARIANTS].copy()
         s[c] = pd.to_numeric(s[c], errors="coerce")
         s = s.replace([np.inf, -np.inf], np.nan).dropna()
         if len(s) < MIN_N or s[c].nunique() < 5:
@@ -98,9 +126,10 @@ def main() -> None:
         # finds so little where the literature finds a great deal: DTI-ALPS falls
         # steeply with age, so any age-related outcome correlates with it whether
         # or not the index carries information about that outcome.
-        C = (np.column_stack([np.ones(len(s)), s.Age.to_numpy(float),
-                              s.sex_n.to_numpy(float)])
-             if not UNADJUSTED else np.ones((len(s), 1)))
+        _cov = [np.ones(len(s)), s.Age.to_numpy(float), s.sex_n.to_numpy(float),
+                s.motion_rms.to_numpy(float), s.pct_outliers.to_numpy(float)]
+        _cov += [s[k].to_numpy(float) for k in SITE_COLS]
+        C = (np.column_stack(_cov) if not UNADJUSTED else np.ones((len(s), 1)))
         def rz(v):
             b, *_ = np.linalg.lstsq(C, np.asarray(v, float), rcond=None)
             return np.asarray(v, float) - C @ b

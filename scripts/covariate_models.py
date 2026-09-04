@@ -57,13 +57,10 @@ def build(cohort: str) -> pd.DataFrame:
     # b=1500 file the rest of the paper uses.
     # DLBS is single-shell b=1000 and has no suffixed file; only HCP-A does.
     shell = os.environ.get("ALPS_TENSOR_SUFFIX", "") if cohort == "hcpa" else ""
-    # The canonical index table, not decoupled_roi. Two reasons. Its indices are
-    # the ones the manuscript reports, so a covariate adjustment computed here
-    # attaches to the coefficients printed elsewhere. And it now carries its own
-    # region voxel counts, so the region-volume term describes the regions the
-    # indices were actually measured in. Taking those counts from the sphere
-    # file instead would adjust for the size of the warped masks, which is not
-    # where any of these numbers come from any more.
+    # The canonical index table, not decoupled_roi, so that a covariate
+    # adjustment computed here attaches to the coefficients printed elsewhere.
+    # Region volumes come from the sphere file because the canonical placement
+    # is the warped mask, and those counts are that mask's own size.
     res = pd.read_csv(HERE / ("measured_pvs_axis_hcpa_b1500_all.csv"
                               if cohort == "hcpa" else
                               "measured_pvs_axis_dlbs.csv"))
@@ -76,7 +73,7 @@ def build(cohort: str) -> pd.DataFrame:
         src = src.merge(mot[["Subject_ID", "Visit", "Eddy_Mean_RMS"]],
                         on=["Subject_ID", "Visit"], how="left")
         keep = ["Subject_ID", "Visit", "Sex", "site", "scanner",
-                "Eddy_Mean_RMS"]
+                "n_proj", "n_assoc", "Eddy_Mean_RMS"]
     else:
         src = pd.read_csv(DIFF / "DLBS" / "dlbs_alps_spheres_5mm.csv")
         mot = pd.read_csv(DIFF / "DLBS" / "dlbs_motion.csv")
@@ -86,7 +83,7 @@ def build(cohort: str) -> pd.DataFrame:
         src["site"] = "single"
         src["scanner"] = "single"
         keep = ["Subject_ID", "Visit", "Sex", "site", "scanner",
-                "Eddy_Mean_RMS"]
+                "n_proj", "n_assoc", "Eddy_Mean_RMS"]
     src["Subject_ID"] = src.Subject_ID.astype(str)
     src["Visit"] = src.Visit.astype(str)
     d = res.merge(src[keep], on=["Subject_ID", "Visit"], how="left")

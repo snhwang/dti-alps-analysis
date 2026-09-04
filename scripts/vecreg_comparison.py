@@ -56,7 +56,7 @@ import atomic_io  # noqa: F401  writes become atomic on import
 warnings.filterwarnings("ignore")
 # Radius of the native-space sphere drawn at each warped region centre,
 # matching the default in measured_pvs_axis. Zero restores the warped mask.
-SPHERE_MM = float(os.environ.get("ALPS_SPHERE_MM", "5"))
+SPHERE_MM = float(os.environ.get("ALPS_SPHERE_MM", "0"))
 
 
 import sys

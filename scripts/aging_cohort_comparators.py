@@ -1,7 +1,9 @@
 """ALPS-PAS and the per-voxel variant in the two aging cohorts.
 
-Both are published-method comparators, and Reviewer 4 asked for exactly this
-comparison. Until now they existed only in the patient cohort, so their HCP-A
+ALPS-PAS is a published method. The per-voxel form is ours, the cross
+product refined voxel by voxel, written in the spirit of LD-ALPS rather
+than being it, which is what the reply to Reviewer 4 says. Calling both
+"comparators" here is only about what this script computes in one pass. Until now they existed only in the patient cohort, so their HCP-A
 and DLBS cells in the variant and beyond-ratio tables were dashes. That was a
 gap even before the patient cohort was removed, and afterwards it would leave
 the two comparators with no association evidence at all.
